@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: PM Confessional API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: regrets
+    description: Regret operations
+  - name: leaderboard
+    description: Leaderboard operations
+  - name: ingest
+    description: Data ingestion operations
 paths:
   /healthz:
     get:
@@ -24,6 +30,150 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /regrets:
+    get:
+      operationId: listRegrets
+      tags: [regrets]
+      summary: List regrets with optional filters
+      parameters:
+        - name: topic_tag
+          in: query
+          schema:
+            type: string
+        - name: stage
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of regrets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRegretsResponse"
+
+  /regrets/search:
+    post:
+      operationId: searchRegrets
+      tags: [regrets]
+      summary: Semantic search for relevant regrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRegretsBody"
+      responses:
+        "200":
+          description: Matched regrets ranked by relevance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchRegretsResponse"
+
+  /regrets/categories:
+    get:
+      operationId: getCategories
+      tags: [regrets]
+      summary: Get regret counts by topic tag and stage
+      responses:
+        "200":
+          description: Category counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriesResponse"
+
+  /regrets/stats:
+    get:
+      operationId: getStats
+      tags: [regrets]
+      summary: Overall database statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+
+  /regrets/{id}:
+    get:
+      operationId: getRegret
+      tags: [regrets]
+      summary: Get a single regret by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A regret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Regret"
+        "404":
+          description: Not found
+
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [leaderboard]
+      summary: Get guests ranked by number of regrets shared
+      responses:
+        "200":
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardResponse"
+
+  /ingest/status:
+    get:
+      operationId: getIngestStatus
+      tags: [ingest]
+      summary: Get current ingestion pipeline status
+      responses:
+        "200":
+          description: Ingestion status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestStatus"
+
+  /ingest/start:
+    post:
+      operationId: startIngest
+      tags: [ingest]
+      summary: Start the data ingestion pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartIngestBody"
+      responses:
+        "202":
+          description: Ingestion started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestStatus"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +184,180 @@ components:
       required:
         - status
 
+    Regret:
+      type: object
+      properties:
+        id:
+          type: integer
+        guest_name:
+          type: string
+        episode_title:
+          type: string
+        episode_date:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        stage:
+          type: string
+          enum: [early, growth, scale, unknown]
+        topic_tag:
+          type: string
+          enum: [hiring, pricing, product, growth, culture, fundraising, timing, customers, other]
+        regret_statement:
+          type: string
+        source_quote:
+          type: string
+        episode_url:
+          type: ["string", "null"]
+        relevance_score:
+          type: ["number", "null"]
+        created_at:
+          type: string
+      required:
+        - id
+        - guest_name
+        - episode_title
+        - stage
+        - topic_tag
+        - regret_statement
+        - source_quote
+        - created_at
+
+    ListRegretsResponse:
+      type: object
+      properties:
+        regrets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Regret"
+        total:
+          type: integer
+      required:
+        - regrets
+        - total
+
+    SearchRegretsBody:
+      type: object
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          default: 8
+      required:
+        - query
+
+    SearchRegretsResponse:
+      type: object
+      properties:
+        regrets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Regret"
+        query:
+          type: string
+      required:
+        - regrets
+        - query
+
+    CategoryCount:
+      type: object
+      properties:
+        label:
+          type: string
+        count:
+          type: integer
+      required:
+        - label
+        - count
+
+    CategoriesResponse:
+      type: object
+      properties:
+        by_topic:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+        by_stage:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+      required:
+        - by_topic
+        - by_stage
+
+    StatsResponse:
+      type: object
+      properties:
+        total_regrets:
+          type: integer
+        total_guests:
+          type: integer
+        total_episodes:
+          type: integer
+      required:
+        - total_regrets
+        - total_guests
+        - total_episodes
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        guest_name:
+          type: string
+        regret_count:
+          type: integer
+        top_topics:
+          type: array
+          items:
+            type: string
+        episode_count:
+          type: integer
+      required:
+        - guest_name
+        - regret_count
+        - top_topics
+        - episode_count
+
+    LeaderboardResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardEntry"
+      required:
+        - entries
+
+    IngestStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [idle, running, completed, failed]
+        episodes_processed:
+          type: integer
+        regrets_extracted:
+          type: integer
+        message:
+          type: ["string", "null"]
+        started_at:
+          type: ["string", "null"]
+        completed_at:
+          type: ["string", "null"]
+      required:
+        - status
+        - episodes_processed
+        - regrets_extracted
+
+    StartIngestBody:
+      type: object
+      properties:
+        limit_episodes:
+          type: ["integer", "null"]
+          description: Limit to N episodes (for testing). Null means all.
+        sample_only:
+          type: boolean
+          default: false
+          description: Run on sample of 10 episodes only
+      required: []

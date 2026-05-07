@@ -1,45 +1,66 @@
-# [Project name]
+# The PM Confessional
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A semantic search app that mines Lenny's podcast archive for hard-won PM mistakes — searchable by the situation you're facing right now.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/pm-confessional run dev` — run the frontend (PORT env set by workflow)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React + Vite + Tailwind CSS + shadcn/ui + wouter
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
+- AI: Anthropic claude-sonnet-4-6 via Replit AI Integrations proxy
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- API spec: `lib/api-spec/openapi.yaml`
+- DB schema: `lib/db/src/schema/regrets.ts`
+- Backend routes: `artifacts/api-server/src/routes/regrets/` and `artifacts/api-server/src/routes/ingest/`
+- Frontend: `artifacts/pm-confessional/src/`
+- Anthropic integration: `lib/integrations-anthropic-ai/`
+- Generated hooks: `lib/api-client-react/src/generated/api.ts`
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Regret extraction runs via `batchProcess` (concurrency=2, retries=3) to handle Anthropic rate limits gracefully
+- Semantic search is implemented as keyword-based scoring (no vector DB needed for MVP) — embeddings column reserved for future upgrade
+- Ingestion runs async in the background; frontend polls `/api/ingest/status` every 3s while running
+- MCP at `https://mcp.lennysdata.com/mcp` is tried first; falls back to curated sample episodes if unavailable
+- The codegen script patches the generated `api-zod/src/index.ts` post-orval to remove a stale `api.schemas` reference that orval generates but doesn't produce
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Homepage**: "What decision are you facing?" search box → semantic (keyword) search of regrets database
+- **Browse**: Filter regrets by topic tag (hiring, pricing, product, growth, etc.) and company stage (early/growth/scale)
+- **Leaderboard**: Most candid/self-aware guests ranked by regret count
+- **Ingest**: Admin page to trigger Claude-powered extraction pipeline from Lenny's archive
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Email: sheldon.gomes@gmail.com
+- Lenny's data available via MCP at https://mcp.lennysdata.com/mcp (with fallback to sample data)
+- Prefers dark UI, editorial aesthetic
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- After any OpenAPI spec change: run `pnpm --filter @workspace/api-spec run codegen`
+- The codegen script uses `touch` + `sed` to fix the orval index.ts — don't manually edit `lib/api-zod/src/index.ts`
+- Regret search uses `ilike` keyword matching; for production upgrade add pgvector for real semantic search
+- Never use console.log in server code — use `req.log` in handlers, `logger` elsewhere
 
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Anthropic integration docs: `.local/skills/ai-integrations-anthropic/SKILL.md`

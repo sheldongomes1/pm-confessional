@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "The PM Confessional"
+version = "1.0.0"
+id = "artifacts/pm-confessional"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22013
+
+[services.development]
+run = "pnpm --filter @workspace/pm-confessional run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pm-confessional", "run", "build" ]
+publicDir = "artifacts/pm-confessional/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22013"
+BASE_PATH = "/"
