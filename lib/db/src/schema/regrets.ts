@@ -1,6 +1,25 @@
-import { pgTable, text, serial, timestamp, real, vector } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, real, vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export const episodesTable = pgTable("episodes", {
+  id: serial("id").primaryKey(),
+  filename: text("filename").notNull().unique(),
+  title: text("title").notNull(),
+  guest_name: text("guest_name").notNull(),
+  episode_date: text("episode_date"),
+  episode_url: text("episode_url"),
+  description: text("description"),
+  tags: text("tags"),
+  word_count: integer("word_count"),
+  regrets_extracted: integer("regrets_extracted").notNull().default(0),
+  scanned_at: timestamp("scanned_at"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEpisodeSchema = createInsertSchema(episodesTable).omit({ id: true, created_at: true });
+export type InsertEpisode = z.infer<typeof insertEpisodeSchema>;
+export type Episode = typeof episodesTable.$inferSelect;
 
 export const regretsTable = pgTable("regrets", {
   id: serial("id").primaryKey(),
@@ -13,6 +32,7 @@ export const regretsTable = pgTable("regrets", {
   regret_statement: text("regret_statement").notNull(),
   source_quote: text("source_quote").notNull(),
   episode_url: text("episode_url"),
+  episode_id: integer("episode_id").references(() => episodesTable.id),
   embedding: text("embedding"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });

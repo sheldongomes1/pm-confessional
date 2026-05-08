@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, ingestStatusTable, regretsTable } from "@workspace/db";
+import { db, ingestStatusTable, regretsTable, episodesTable } from "@workspace/db";
 import { StartIngestBody, GetIngestStatusResponse } from "@workspace/api-zod";
 import { batchProcess } from "@workspace/integrations-anthropic-ai/batch";
-import { desc } from "drizzle-orm";
+import { desc, eq, isNull, sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { extractRegretFromPassage } from "../../lib/regret-extractor";
 
@@ -198,7 +198,13 @@ async function callMCP(
   if (parsed.error) throw new Error(`MCP error: ${parsed.error.message}`);
   const inner = parsed.result?.content?.[0]?.text;
   if (typeof inner !== "string") throw new Error("MCP response missing content text");
-  return JSON.parse(inner);
+  // Most tools (search_content, list_content) return JSON-encoded text. read_content
+  // returns raw markdown. Try JSON first; fall back to the raw string.
+  try {
+    return JSON.parse(inner);
+  } catch {
+    return inner;
+  }
 }
 
 /**
@@ -240,63 +246,102 @@ function guestFromTitle(title: string): string {
   return "Unknown";
 }
 
-async function fetchEpisodesFromMCP(
-  sampleOnly: boolean,
-  limitEpisodes: number | null
-): Promise<EpisodeChunk[]> {
-  const token = process.env.LENNYS_DATA_MCP_TOKEN;
-  if (!token) {
-    logger.warn("LENNYS_DATA_MCP_TOKEN not set, using sample data");
-    return getSampleEpisodes();
+interface MCPListResult {
+  total: number;
+  offset: number;
+  limit: number;
+  results: Array<{
+    title: string;
+    filename: string;
+    tags?: string[];
+    word_count?: number;
+    date?: string | null;
+    description?: string;
+    guest?: string;
+    type: string;
+  }>;
+}
+
+/**
+ * Prefer the MCP-provided guest field (most reliable) over the parsed-from-title
+ * fallback. `guestFromTitle` always returns a string ("Unknown" if no pattern
+ * matches), so a naive `parsed || mcp` would never reach the MCP value.
+ */
+function resolveGuest(title: string, mcpGuest: string | undefined): string {
+  if (mcpGuest && mcpGuest.trim() && mcpGuest.trim().toLowerCase() !== "unknown") {
+    return mcpGuest.trim();
   }
+  return guestFromTitle(title);
+}
 
-  try {
-    const perQuery = sampleOnly ? 5 : 20;
-    const allResults: MCPSearchResult[] = [];
+/** Paginate list_content to fetch every podcast in the archive. */
+async function listAllPodcasts(token: string): Promise<MCPListResult["results"]> {
+  const all: MCPListResult["results"] = [];
+  const PAGE = 100;
+  let offset = 0;
+  while (true) {
+    const data = (await callMCP(token, "tools/call", {
+      name: "list_content",
+      arguments: { content_type: "podcast", limit: PAGE, offset },
+    })) as MCPListResult;
+    all.push(...data.results);
+    if (all.length >= data.total || data.results.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
 
-    for (const query of REGRET_QUERIES) {
+/**
+ * Run several broad regret-themed searches and build a {filename → source_url}
+ * map. URL is missing from list_content/read_content; only search_content
+ * surfaces it. We accept partial coverage — episodes without a hit get null URL.
+ */
+async function harvestSourceUrls(token: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const query of REGRET_QUERIES) {
+    try {
       const data = (await callMCP(token, "tools/call", {
         name: "search_content",
-        arguments: { query, content_type: "podcast", limit: perQuery },
+        arguments: { query, content_type: "podcast", limit: 100 },
       })) as { results?: MCPSearchResult[] };
-      if (Array.isArray(data.results)) allResults.push(...data.results);
-    }
-
-    // Dedupe snippets across queries: key by filename + snippet text prefix
-    const chunks: EpisodeChunk[] = [];
-    const seen = new Set<string>();
-    for (const ep of allResults) {
-      const snippets = ep.snippets ?? (ep.snippet ? [{ text: ep.snippet }] : []);
-      for (const sn of snippets) {
-        const key = `${ep.filename}|${sn.text.slice(0, 80)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        chunks.push({
-          guest_name: guestFromTitle(ep.title),
-          episode_title: ep.title,
-          episode_date: ep.date ?? null,
-          episode_url: ep.source_url ?? null,
-          // Strip leading/trailing ellipses the MCP adds around snippets.
-          text: sn.text.replace(/^\.{3}/, "").replace(/\.{3}$/, "").trim(),
-        });
+      for (const r of data.results ?? []) {
+        if (r.source_url && !map.has(r.filename)) {
+          map.set(r.filename, r.source_url);
+        }
       }
+    } catch (err) {
+      logger.warn({ err, query }, "URL harvest search failed");
     }
-
-    if (chunks.length === 0) {
-      logger.warn("MCP returned no snippets, using sample data");
-      return getSampleEpisodes();
-    }
-
-    const cap = limitEpisodes ?? (sampleOnly ? 30 : chunks.length);
-    logger.info(
-      { chunks: chunks.length, capped: Math.min(cap, chunks.length) },
-      "MCP fetch succeeded"
-    );
-    return chunks.slice(0, cap);
-  } catch (err) {
-    logger.warn({ err }, "MCP fetch failed, using sample data");
-    return getSampleEpisodes();
   }
+  return map;
+}
+
+/** Read the full markdown for a single episode. */
+async function readEpisodeMarkdown(token: string, filename: string): Promise<string> {
+  const data = await callMCP(token, "tools/call", {
+    name: "read_content",
+    arguments: { filename },
+  });
+  return typeof data === "string" ? data : "";
+}
+
+/**
+ * Strip YAML frontmatter from the markdown (title/date/etc are already on the
+ * episode row) and split the body into roughly 800-word passages with a small
+ * overlap so a regret straddling a boundary still gets caught.
+ */
+function chunkMarkdown(md: string): string[] {
+  const body = md.replace(/^---\n[\s\S]*?\n---\n+/, "");
+  const words = body.split(/\s+/).filter(Boolean);
+  const SIZE = 800;
+  const OVERLAP = 80;
+  const chunks: string[] = [];
+  for (let i = 0; i < words.length; i += SIZE - OVERLAP) {
+    const chunk = words.slice(i, i + SIZE).join(" ");
+    if (chunk.length < 200) continue;
+    chunks.push(chunk);
+  }
+  return chunks;
 }
 
 function getSampleEpisodes(): EpisodeChunk[] {
@@ -376,56 +421,125 @@ function getSampleEpisodes(): EpisodeChunk[] {
 
 async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
   try {
-    logger.info({ sampleOnly, limitEpisodes }, "Starting ingestion");
+    logger.info({ sampleOnly, limitEpisodes }, "Starting full-scan ingestion");
 
-    const chunks = await fetchEpisodesFromMCP(sampleOnly, limitEpisodes);
+    const token = process.env.LENNYS_DATA_MCP_TOKEN;
+    if (!token) {
+      throw new Error("LENNYS_DATA_MCP_TOKEN is not set");
+    }
 
-    await updateStatus({
-      message: `Processing ${chunks.length} transcript chunks...`,
-    });
+    // Phase 1: enumerate every podcast in the archive
+    await updateStatus({ message: "Listing all podcasts in the archive..." });
+    const podcasts = await listAllPodcasts(token);
+    logger.info({ total: podcasts.length }, "Listed podcasts from MCP");
+
+    // Phase 2: harvest source URLs from regret-themed searches
+    await updateStatus({ message: `Found ${podcasts.length} episodes. Harvesting source URLs...` });
+    const urlMap = await harvestSourceUrls(token);
+    logger.info({ urls: urlMap.size }, "URL harvest done");
+
+    // Phase 3: upsert every episode into the episodes table (idempotent on filename)
+    await updateStatus({ message: `Saving ${podcasts.length} episodes to the database...` });
+    for (const ep of podcasts) {
+      await db
+        .insert(episodesTable)
+        .values({
+          filename: ep.filename,
+          title: ep.title,
+          guest_name: resolveGuest(ep.title, ep.guest),
+          episode_date: ep.date ?? null,
+          episode_url: urlMap.get(ep.filename) ?? null,
+          description: ep.description ?? null,
+          tags: ep.tags ? JSON.stringify(ep.tags) : null,
+          word_count: ep.word_count ?? null,
+        })
+        .onConflictDoUpdate({
+          target: episodesTable.filename,
+          set: {
+            title: ep.title,
+            guest_name: resolveGuest(ep.title, ep.guest),
+            episode_date: ep.date ?? null,
+            // Only overwrite URL if we have a new one — preserve existing
+            episode_url: sql`COALESCE(${urlMap.get(ep.filename) ?? null}, ${episodesTable.episode_url})`,
+            description: ep.description ?? null,
+            tags: ep.tags ? JSON.stringify(ep.tags) : null,
+            word_count: ep.word_count ?? null,
+          },
+        });
+    }
+
+    // Phase 4: scan unscanned episodes for regrets
+    const toScan = await db
+      .select()
+      .from(episodesTable)
+      .where(isNull(episodesTable.scanned_at));
+
+    const cap = limitEpisodes ?? toScan.length;
+    const scanList = toScan.slice(0, cap);
+    logger.info({ toScan: scanList.length, total: podcasts.length }, "Beginning extraction phase");
 
     let episodesProcessed = 0;
     let regretsExtracted = 0;
-    const episodesSeen = new Set<string>();
+    const startedAt = Date.now();
 
-    const results = await batchProcess(
-      chunks,
-      async (chunk, index) => {
-        const result = await extractRegretFromPassage(chunk.text);
-        
-        if (!episodesSeen.has(chunk.episode_title)) {
-          episodesSeen.add(chunk.episode_title);
-          episodesProcessed++;
-        }
+    for (const episode of scanList) {
+      try {
+        // Idempotency: clear any partial regrets from a previous interrupted
+        // run of this same episode before reinserting. scanned_at is only set
+        // on full success, so an unscanned episode with rows here means a
+        // prior attempt crashed mid-way.
+        await db.delete(regretsTable).where(eq(regretsTable.episode_id, episode.id));
 
-        if (result?.regret_statement) {
-          await db.insert(regretsTable).values({
-            guest_name: chunk.guest_name,
-            episode_title: chunk.episode_title,
-            episode_date: chunk.episode_date,
-            episode_url: chunk.episode_url,
-            company: null,
-            stage: result.stage || "unknown",
-            topic_tag: result.topic_tag || "other",
-            regret_statement: result.regret_statement,
-            source_quote: chunk.text.slice(0, 500),
-            embedding: null,
-          });
-          regretsExtracted++;
-        }
+        const md = await readEpisodeMarkdown(token, episode.filename);
+        const chunks = chunkMarkdown(md);
 
-        if (index % 5 === 0) {
-          await updateStatus({
-            episodes_processed: String(episodesProcessed),
-            regrets_extracted: String(regretsExtracted),
-            message: `Processed ${index + 1}/${chunks.length} chunks, extracted ${regretsExtracted} regrets`,
-          });
-        }
+        let perEpisodeRegrets = 0;
+        await batchProcess(
+          chunks,
+          async (chunk) => {
+            const result = await extractRegretFromPassage(chunk);
+            if (result?.regret_statement) {
+              await db.insert(regretsTable).values({
+                guest_name: episode.guest_name,
+                episode_title: episode.title,
+                episode_date: episode.episode_date,
+                episode_url: episode.episode_url,
+                episode_id: episode.id,
+                company: null,
+                stage: result.stage || "unknown",
+                topic_tag: result.topic_tag || "other",
+                regret_statement: result.regret_statement,
+                source_quote: chunk.slice(0, 500),
+                embedding: null,
+              });
+              perEpisodeRegrets++;
+            }
+            return result;
+          },
+          { concurrency: 5, retries: 3 }
+        );
 
-        return result;
-      },
-      { concurrency: 2, retries: 3 }
-    );
+        await db
+          .update(episodesTable)
+          .set({ scanned_at: new Date(), regrets_extracted: perEpisodeRegrets })
+          .where(eq(episodesTable.id, episode.id));
+
+        regretsExtracted += perEpisodeRegrets;
+        episodesProcessed++;
+
+        // Update status every episode (cheap; gives the UI live progress)
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        const rate = episodesProcessed / Math.max(elapsed, 1);
+        const etaMin = rate > 0 ? Math.round((scanList.length - episodesProcessed) / rate / 60) : 0;
+        await updateStatus({
+          episodes_processed: String(episodesProcessed),
+          regrets_extracted: String(regretsExtracted),
+          message: `Scanned ${episodesProcessed}/${scanList.length} episodes · ${regretsExtracted} regrets · ~${etaMin}min remaining`,
+        });
+      } catch (err) {
+        logger.warn({ err, filename: episode.filename }, "Episode scan failed, skipping");
+      }
+    }
 
     logger.info({ regretsExtracted, episodesProcessed }, "Ingestion completed");
 
@@ -433,7 +547,7 @@ async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
       status: "completed",
       episodes_processed: String(episodesProcessed),
       regrets_extracted: String(regretsExtracted),
-      message: `Done! Processed ${episodesProcessed} episodes and extracted ${regretsExtracted} regrets.`,
+      message: `Done! Scanned ${episodesProcessed} episodes and extracted ${regretsExtracted} regrets.`,
       completed_at: new Date(),
     });
   } finally {

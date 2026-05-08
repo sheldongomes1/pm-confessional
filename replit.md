@@ -34,7 +34,8 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 
 ## Architecture decisions
 
-- Regret extraction runs via `batchProcess` (concurrency=2, retries=3) to handle Anthropic rate limits gracefully
+- Ingestion is a 4-phase full-archive scan: (1) `list_content` paginated to enumerate all 298 podcasts, (2) broad `search_content` queries to harvest YouTube source URLs, (3) upsert all episodes into `episodes` table (idempotent on `filename`), (4) `read_content` per episode → 800-word chunks → `batchProcess` (concurrency=5, retries=3) → save regrets with `episode_id` FK and update `scanned_at`
+- Resumable: Phase 4 only scans episodes where `scanned_at IS NULL`, so re-running picks up where it left off
 - Semantic search is implemented as keyword-based scoring (no vector DB needed for MVP) — embeddings column reserved for future upgrade
 - Ingestion runs async in the background; frontend polls `/api/ingest/status` every 3s while running
 - MCP at `https://mcp.lennysdata.com/mcp` is tried first; falls back to curated sample episodes if unavailable
@@ -59,6 +60,8 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - The codegen script uses `touch` + `sed` to fix the orval index.ts — don't manually edit `lib/api-zod/src/index.ts`
 - Regret search uses `ilike` keyword matching; for production upgrade add pgvector for real semantic search
 - Never use console.log in server code — use `req.log` in handlers, `logger` elsewhere
+- MCP `read_content` returns raw markdown (not JSON) — `callMCP()` falls back to returning the inner text string when `JSON.parse` fails
+- Source URLs are only available via `search_content`, not `list_content`/`read_content` — episodes without a search hit will have `episode_url = null`
 
 ## Pointers
 
