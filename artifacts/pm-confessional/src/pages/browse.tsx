@@ -1,29 +1,54 @@
 import { useState } from "react";
-import { useGetCategories, useListRegrets, getGetCategoriesQueryKey } from "@workspace/api-client-react";
+import {
+  useGetCategories,
+  useListRegrets,
+  useGetLeaderboard,
+  getGetCategoriesQueryKey,
+  getGetLeaderboardQueryKey,
+} from "@workspace/api-client-react";
 import { RegretCard } from "@/components/regret-card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from "@/components/ui/command";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 
 export function Browse() {
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
+  const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
+  const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 
   const { data: categories, isLoading: isLoadingCats } = useGetCategories({
     query: { queryKey: getGetCategoriesQueryKey() }
   });
 
+  const { data: leaderboard } = useGetLeaderboard({
+    query: { queryKey: getGetLeaderboardQueryKey() }
+  });
+
+  const guests = (leaderboard?.entries ?? [])
+    .map((e) => ({ name: e.guest_name, count: e.regret_count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const { data: regretsData, isLoading: isLoadingRegrets } = useListRegrets({
     topic_tag: selectedTopic,
     stage: selectedStage,
+    guest_name: selectedGuest,
     limit: 50
   });
 
   const clearFilters = () => {
     setSelectedTopic(undefined);
     setSelectedStage(undefined);
+    setSelectedGuest(undefined);
   };
 
   return (
@@ -33,7 +58,7 @@ export function Browse() {
         <div>
           <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
             <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Topics</h2>
-            {(selectedTopic || selectedStage) && (
+            {(selectedTopic || selectedStage || selectedGuest) && (
               <button onClick={clearFilters} className="text-[10px] uppercase tracking-widest text-primary hover:text-foreground transition-colors">
                 Clear All
               </button>
@@ -63,6 +88,83 @@ export function Browse() {
               ))
             )}
           </div>
+        </div>
+
+        <div>
+          <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground mb-6 pb-4 border-b border-border">Guest</h2>
+          <Popover open={guestPickerOpen} onOpenChange={setGuestPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className="w-full flex items-center justify-between gap-2 py-2 border-b border-border/60 hover:border-foreground transition-colors text-left group"
+                data-testid="filter-guest-trigger"
+              >
+                <span
+                  className={`text-sm font-serif italic tracking-wide truncate ${
+                    selectedGuest ? "text-primary font-bold not-italic" : "text-muted-foreground"
+                  }`}
+                >
+                  {selectedGuest ?? "Any guest"}
+                </span>
+                {selectedGuest ? (
+                  <X
+                    className="w-3.5 h-3.5 text-muted-foreground hover:text-primary flex-shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedGuest(undefined);
+                    }}
+                  />
+                ) : (
+                  <ChevronsUpDown className="w-3.5 h-3.5 text-border group-hover:text-muted-foreground flex-shrink-0" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-64 p-0 rounded-none border-border bg-card"
+              align="start"
+              sideOffset={4}
+            >
+              <Command className="bg-transparent">
+                <CommandInput
+                  placeholder="Search guests..."
+                  className="border-b border-border h-10 text-sm"
+                />
+                <CommandList className="max-h-72">
+                  <CommandEmpty className="py-6 text-center text-xs text-muted-foreground italic font-serif">
+                    No one by that name.
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {guests.map((guest) => {
+                      const isSelected = selectedGuest === guest.name;
+                      return (
+                        <CommandItem
+                          key={guest.name}
+                          value={guest.name}
+                          onSelect={(value) => {
+                            setSelectedGuest(isSelected ? undefined : value);
+                            setGuestPickerOpen(false);
+                          }}
+                          className="rounded-none px-3 py-2 cursor-pointer aria-selected:bg-secondary aria-selected:text-foreground flex items-center justify-between gap-2"
+                          data-testid={`filter-guest-option-${guest.name}`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <Check
+                              className={`w-3.5 h-3.5 flex-shrink-0 ${
+                                isSelected ? "opacity-100 text-primary" : "opacity-0"
+                              }`}
+                            />
+                            <span className="text-sm font-serif truncate">{guest.name}</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
+                            {guest.count}
+                          </span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div>
