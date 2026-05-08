@@ -1,8 +1,5 @@
-import React from "react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
-import { Headphones } from "lucide-react";
 
 export function RegretCard({ regret }: { regret: Regret }) {
   return (
@@ -37,31 +34,13 @@ export function RegretCard({ regret }: { regret: Regret }) {
         </div>
       </div>
 
-      <div className="pt-6 border-t border-border/40 flex items-center justify-between gap-4 mt-auto">
-        <div>
-          <p className="font-sans font-bold text-sm text-foreground uppercase tracking-wide">
-            {regret.guest_name}
-          </p>
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-1">
-            {regret.company || "PM Leader"}
-          </p>
-        </div>
-        {regret.episode_url ? (
-          <a 
-            href={regret.episode_url} 
-            target="_blank" 
-            rel="noreferrer"
-            className="flex-shrink-0 w-10 h-10 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary transition-colors"
-            data-testid={`link-episode-${regret.id}`}
-            title="Listen to Episode"
-          >
-            <Headphones className="w-4 h-4" />
-          </a>
-        ) : (
-          <div className="flex-shrink-0 w-10 h-10 rounded-full border border-border/30 flex items-center justify-center text-muted-foreground/30" title={regret.episode_title}>
-            <Headphones className="w-4 h-4" />
-          </div>
-        )}
+      <div className="pt-6 border-t border-border/40 mt-auto">
+        <p className="font-sans font-bold text-sm text-foreground uppercase tracking-wide">
+          {regret.guest_name}
+        </p>
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-1">
+          {regret.company || "PM Leader"}
+        </p>
       </div>
     </Card>
   );
