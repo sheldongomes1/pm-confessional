@@ -182,6 +182,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/IngestStatus"
 
+  /ingest/reextract:
+    post:
+      operationId: reextractRegrets
+      tags: [ingest]
+      summary: Re-extract regrets from cached transcript markdown
+      description: >
+        Re-runs the regret extractor against episodes that already have cached
+        markdown. For episodes missing cached markdown (legacy rows scanned
+        before the cache existed), the transcript is fetched from MCP and
+        cached. Use this after iterating on the extractor prompt to refresh
+        the dataset without paying the full ingestion cost.
+      responses:
+        "202":
+          description: Re-extraction started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestStatus"
+
 components:
   schemas:
     HealthStatus:

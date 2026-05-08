@@ -42,7 +42,7 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - The codegen script patches the generated `api-zod/src/index.ts` post-orval to remove a stale `api.schemas` reference that orval generates but doesn't produce
 - Each regret persists `headline_evidence` — a verbatim 8-40 word span from the transcript containing first-person pronouns. The frontend displays this (with `source_quote` fallback) because `source_quote = chunk.slice(0, 500)` is often truncated mid-sentence
 - Extractor prompt is strict: rejects imperatives, requires first-person past-tense ownership, lists explicit red-flag phrases. Audit shows 90% PERSONAL_CONFESSION (was 33% with loose prompt)
-- Episode transcripts are NOT stored locally — only metadata. Re-extractions must re-fetch from MCP (~3hr full-archive pass)
+- Episode transcripts ARE cached locally in `episodes.markdown` (text column, ~30 MB across 298 episodes). Phase 4 of full ingestion populates it on first scan. `POST /api/ingest/reextract` reuses the cache to re-run the extractor without paying the ~3hr MCP fetch cost; legacy episodes without cached markdown are backfilled from MCP on first re-extract
 
 ## Product
 

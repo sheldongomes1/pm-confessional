@@ -14,6 +14,11 @@ export const episodesTable = pgTable("episodes", {
   word_count: integer("word_count"),
   regrets_extracted: integer("regrets_extracted").notNull().default(0),
   scanned_at: timestamp("scanned_at"),
+  // Cached transcript markdown from MCP `read_content`. Stored so we can
+  // re-extract regrets locally (with prompt iterations) without paying the
+  // ~3hr MCP refetch cost. Populated by ingestion Phase 4 the first time an
+  // episode is scanned. ~30 MB total across the 298-episode archive.
+  markdown: text("markdown"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

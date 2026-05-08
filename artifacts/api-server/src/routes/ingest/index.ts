@@ -124,6 +124,55 @@ router.post("/ingest/start", async (req, res): Promise<void> => {
   });
 });
 
+router.post("/ingest/reextract", async (_req, res): Promise<void> => {
+  if (isIngesting) {
+    const status = await getStatus();
+    res.status(202).json(
+      GetIngestStatusResponse.parse({
+        status: status?.status ?? "running",
+        episodes_processed: parseInt(status?.episodes_processed ?? "0", 10),
+        regrets_extracted: parseInt(status?.regrets_extracted ?? "0", 10),
+        message: "Ingestion already running",
+        started_at: status?.started_at?.toISOString() ?? null,
+        completed_at: null,
+      })
+    );
+    return;
+  }
+
+  isIngesting = true;
+  const startTime = new Date();
+  await updateStatus({
+    status: "running",
+    episodes_processed: "0",
+    regrets_extracted: "0",
+    message: "Re-extracting regrets from cached transcripts...",
+    started_at: startTime,
+    completed_at: null,
+  });
+
+  res.status(202).json(
+    GetIngestStatusResponse.parse({
+      status: "running",
+      episodes_processed: 0,
+      regrets_extracted: 0,
+      message: "Re-extraction started",
+      started_at: startTime.toISOString(),
+      completed_at: null,
+    })
+  );
+
+  runReextract().catch((err) => {
+    logger.error({ err }, "Re-extraction failed");
+    updateStatus({
+      status: "failed",
+      message: `Error: ${err instanceof Error ? err.message : String(err)}`,
+      completed_at: new Date(),
+    }).catch(() => {});
+    isIngesting = false;
+  });
+});
+
 interface EpisodeChunk {
   guest_name: string;
   episode_title: string;
@@ -419,6 +468,126 @@ function getSampleEpisodes(): EpisodeChunk[] {
   ];
 }
 
+/**
+ * Extract regrets from a transcript and insert them. Replaces any existing
+ * regrets for the episode first so the operation is idempotent. Returns the
+ * count of new regrets inserted.
+ */
+async function extractAndSaveFromMarkdown(
+  episode: typeof episodesTable.$inferSelect,
+  md: string
+): Promise<number> {
+  await db.delete(regretsTable).where(eq(regretsTable.episode_id, episode.id));
+  const chunks = chunkMarkdown(md);
+  let count = 0;
+  await batchProcess(
+    chunks,
+    async (chunk) => {
+      const result = await extractRegretFromPassage(chunk);
+      if (result?.regret_statement) {
+        await db.insert(regretsTable).values({
+          guest_name: episode.guest_name,
+          episode_title: episode.title,
+          episode_date: episode.episode_date,
+          episode_url: episode.episode_url,
+          episode_id: episode.id,
+          company: null,
+          stage: result.stage || "general",
+          topic_tag: result.topic_tag || "other",
+          regret_statement: result.regret_statement,
+          source_quote: chunk.slice(0, 500),
+          headline_evidence: result.headline_evidence ?? null,
+          embedding: null,
+        });
+        count++;
+      }
+      return result;
+    },
+    { concurrency: 5, retries: 3 }
+  );
+  return count;
+}
+
+/**
+ * Re-extract regrets from cached transcript markdown. For any episode that
+ * doesn't have markdown cached yet (legacy rows scanned before this column
+ * existed), fetch it from MCP first and cache it. This lets us iterate on
+ * the extractor prompt without re-paying the full MCP fetch cost on
+ * subsequent runs.
+ */
+async function runReextract() {
+  try {
+    const token = process.env.LENNYS_DATA_MCP_TOKEN;
+    if (!token) throw new Error("LENNYS_DATA_MCP_TOKEN is not set");
+
+    const allEpisodes = await db.select().from(episodesTable);
+    const cachedCount = allEpisodes.filter((e) => e.markdown).length;
+    logger.info(
+      { total: allEpisodes.length, cached: cachedCount },
+      "Starting re-extraction"
+    );
+
+    let episodesProcessed = 0;
+    let regretsExtracted = 0;
+    const startedAt = Date.now();
+
+    for (const episode of allEpisodes) {
+      try {
+        let md = episode.markdown;
+        if (!md) {
+          md = await readEpisodeMarkdown(token, episode.filename);
+          await db
+            .update(episodesTable)
+            .set({ markdown: md })
+            .where(eq(episodesTable.id, episode.id));
+        }
+
+        const perEpisodeRegrets = await extractAndSaveFromMarkdown(
+          { ...episode, markdown: md },
+          md
+        );
+
+        await db
+          .update(episodesTable)
+          .set({ scanned_at: new Date(), regrets_extracted: perEpisodeRegrets })
+          .where(eq(episodesTable.id, episode.id));
+
+        regretsExtracted += perEpisodeRegrets;
+        episodesProcessed++;
+
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        const rate = episodesProcessed / Math.max(elapsed, 1);
+        const etaMin =
+          rate > 0
+            ? Math.round(
+                (allEpisodes.length - episodesProcessed) / rate / 60
+              )
+            : 0;
+        await updateStatus({
+          episodes_processed: String(episodesProcessed),
+          regrets_extracted: String(regretsExtracted),
+          message: `Re-extracted ${episodesProcessed}/${allEpisodes.length} episodes · ${regretsExtracted} regrets · ~${etaMin}min remaining`,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, filename: episode.filename },
+          "Re-extraction failed for episode, skipping"
+        );
+      }
+    }
+
+    await updateStatus({
+      status: "completed",
+      episodes_processed: String(episodesProcessed),
+      regrets_extracted: String(regretsExtracted),
+      message: `Done! Re-extracted ${episodesProcessed} episodes and produced ${regretsExtracted} regrets.`,
+      completed_at: new Date(),
+    });
+  } finally {
+    isIngesting = false;
+  }
+}
+
 async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
   try {
     logger.info({ sampleOnly, limitEpisodes }, "Starting full-scan ingestion");
@@ -491,34 +660,14 @@ async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
         await db.delete(regretsTable).where(eq(regretsTable.episode_id, episode.id));
 
         const md = await readEpisodeMarkdown(token, episode.filename);
-        const chunks = chunkMarkdown(md);
+        // Cache the transcript so future re-extractions can run offline
+        // without re-paying the ~3hr MCP fetch cost.
+        await db
+          .update(episodesTable)
+          .set({ markdown: md })
+          .where(eq(episodesTable.id, episode.id));
 
-        let perEpisodeRegrets = 0;
-        await batchProcess(
-          chunks,
-          async (chunk) => {
-            const result = await extractRegretFromPassage(chunk);
-            if (result?.regret_statement) {
-              await db.insert(regretsTable).values({
-                guest_name: episode.guest_name,
-                episode_title: episode.title,
-                episode_date: episode.episode_date,
-                episode_url: episode.episode_url,
-                episode_id: episode.id,
-                company: null,
-                stage: result.stage || "general",
-                topic_tag: result.topic_tag || "other",
-                regret_statement: result.regret_statement,
-                source_quote: chunk.slice(0, 500),
-                headline_evidence: result.headline_evidence ?? null,
-                embedding: null,
-              });
-              perEpisodeRegrets++;
-            }
-            return result;
-          },
-          { concurrency: 5, retries: 3 }
-        );
+        const perEpisodeRegrets = await extractAndSaveFromMarkdown(episode, md);
 
         await db
           .update(episodesTable)

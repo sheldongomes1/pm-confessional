@@ -757,3 +757,86 @@ export const useStartIngest = <
 > => {
   return useMutation(getStartIngestMutationOptions(options));
 };
+
+/**
+ * Re-runs the regret extractor against episodes that already have cached markdown. For episodes missing cached markdown (legacy rows scanned before the cache existed), the transcript is fetched from MCP and cached. Use this after iterating on the extractor prompt to refresh the dataset without paying the full ingestion cost.
+
+ * @summary Re-extract regrets from cached transcript markdown
+ */
+export const getReextractRegretsUrl = () => {
+  return `/api/ingest/reextract`;
+};
+
+export const reextractRegrets = async (
+  options?: RequestInit,
+): Promise<IngestStatus> => {
+  return customFetch<IngestStatus>(getReextractRegretsUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getReextractRegretsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reextractRegrets>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reextractRegrets>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["reextractRegrets"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reextractRegrets>>,
+    void
+  > = () => {
+    return reextractRegrets(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReextractRegretsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reextractRegrets>>
+>;
+
+export type ReextractRegretsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Re-extract regrets from cached transcript markdown
+ */
+export const useReextractRegrets = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reextractRegrets>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reextractRegrets>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getReextractRegretsMutationOptions(options));
+};
