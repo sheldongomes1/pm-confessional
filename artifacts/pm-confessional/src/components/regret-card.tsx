@@ -18,14 +18,21 @@ export function RegretCard({ regret }: { regret: Regret }) {
   // the model identified as proving the confession) over the windowed
   // source_quote (first 500 chars of an 800-word chunk, often truncated
   // mid-sentence or capturing the host's intro to the next question).
-  const rawQuote =
-    regret.headline_evidence && regret.headline_evidence.trim().length > 0
-      ? regret.headline_evidence
-      : regret.source_quote;
-  const cleanQuote = rawQuote
-    .trim()
-    .replace(/^["“”'`]+/, "")
-    .replace(/["“”'`]+$/, "");
+  const stripQuotes = (s: string) =>
+    s
+      .trim()
+      .replace(/^["“”'`]+/, "")
+      .replace(/["“”'`]+$/, "")
+      .trim();
+  const evidenceClean = regret.headline_evidence
+    ? stripQuotes(regret.headline_evidence)
+    : "";
+  // Only use headline_evidence if it has real prose left after stripping
+  // surrounding quotes/punctuation — otherwise fall through to source_quote.
+  const cleanQuote =
+    evidenceClean.length > 5
+      ? evidenceClean
+      : stripQuotes(regret.source_quote ?? "");
 
   const role = roleFor(regret.guest_name, regret.company);
 

@@ -31,7 +31,7 @@ export const EXTRACTOR_CASES: ExtractorCase[] = [
     expect: {
       should_extract: true,
       allowed_topics: ["pricing", "customers"],
-      allowed_stages: ["early", "unknown"],
+      allowed_stages: ["early", "unknown", "general"],
     },
   },
   {
@@ -44,7 +44,7 @@ export const EXTRACTOR_CASES: ExtractorCase[] = [
       should_extract: true,
       forbidden_terms: ["uber", "airbnb", "doordash", "lyft", "instacart", "tinder"],
       allowed_topics: ["growth", "product", "timing", "customers"],
-      allowed_stages: ["early", "unknown"],
+      allowed_stages: ["early", "unknown", "general"],
     },
   },
   {
@@ -70,7 +70,7 @@ export const EXTRACTOR_CASES: ExtractorCase[] = [
       should_extract: true,
       forbidden_terms: ["jtbd", "jobs-to-be-done", "rice", "ice", "north star", "okrs"],
       allowed_topics: ["product", "growth", "culture"],
-      allowed_stages: ["unknown", "growth", "scale"],
+      allowed_stages: ["unknown", "general", "growth", "scale"],
     },
   },
   {
@@ -101,7 +101,7 @@ export const EXTRACTOR_CASES: ExtractorCase[] = [
       should_extract: true,
       forbidden_terms: ["lawsuit", "fine", "regulator", "ftc", "sec"],
       allowed_topics: ["growth", "product", "culture", "customers"],
-      allowed_stages: ["growth", "scale", "unknown"],
+      allowed_stages: ["growth", "scale", "unknown", "general"],
     },
   },
   {
@@ -113,7 +113,7 @@ export const EXTRACTOR_CASES: ExtractorCase[] = [
     expect: {
       should_extract: true,
       allowed_topics: ["pricing", "timing"],
-      allowed_stages: ["unknown"],
+      allowed_stages: ["unknown", "general"],
     },
   },
   {

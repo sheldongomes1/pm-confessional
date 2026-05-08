@@ -40,6 +40,9 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - Ingestion runs async in the background; frontend polls `/api/ingest/status` every 3s while running
 - MCP at `https://mcp.lennysdata.com/mcp` is tried first; falls back to curated sample episodes if unavailable
 - The codegen script patches the generated `api-zod/src/index.ts` post-orval to remove a stale `api.schemas` reference that orval generates but doesn't produce
+- Each regret persists `headline_evidence` — a verbatim 8-40 word span from the transcript containing first-person pronouns. The frontend displays this (with `source_quote` fallback) because `source_quote = chunk.slice(0, 500)` is often truncated mid-sentence
+- Extractor prompt is strict: rejects imperatives, requires first-person past-tense ownership, lists explicit red-flag phrases. Audit shows 90% PERSONAL_CONFESSION (was 33% with loose prompt)
+- Episode transcripts are NOT stored locally — only metadata. Re-extractions must re-fetch from MCP (~3hr full-archive pass)
 
 ## Product
 
@@ -62,6 +65,8 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - Never use console.log in server code — use `req.log` in handlers, `logger` elsewhere
 - MCP `read_content` returns raw markdown (not JSON) — `callMCP()` falls back to returning the inner text string when `JSON.parse` fails
 - Source URLs are only available via `search_content`, not `list_content`/`read_content` — episodes without a search hit will have `episode_url = null`
+- Stage `unknown` is legacy — new rows use `general`. OpenAPI enum still includes both for back-compat
+- The deep audit script (`scripts/src/audit-regrets-deep.ts`) probes with `headline_evidence` (verbatim → guaranteed findable in markdown), not `source_quote` (truncated chunk start). Probing with the wrong field reports inflated MISMATCH rates
 
 ## Pointers
 

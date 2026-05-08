@@ -9,6 +9,7 @@ interface Row {
   guest_name: string;
   regret_statement: string;
   source_quote: string;
+  headline_evidence: string | null;
   filename: string;
 }
 
@@ -83,7 +84,7 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
   const { rows } = await pg.query<Row>(
-    `SELECT r.id::text AS id, r.guest_name, r.regret_statement, r.source_quote, e.filename
+    `SELECT r.id::text AS id, r.guest_name, r.regret_statement, r.source_quote, r.headline_evidence, e.filename
      FROM regrets r JOIN episodes e ON e.id = r.episode_id
      WHERE r.source_quote IS NOT NULL AND length(r.source_quote) > 80
      ORDER BY RANDOM() LIMIT $1`,
@@ -121,7 +122,15 @@ async function main() {
       batch.map(async (r): Promise<AuditResult> => {
         try {
           const md = cache.get(r.filename) ?? "";
-          const widened = md ? widenContext(md, r.source_quote) : r.source_quote;
+          // Probe with headline_evidence first — it's a verbatim span the
+          // extractor copied from the markdown, so it's guaranteed findable.
+          // Fall back to source_quote (legacy / truncated chunk start) only if
+          // there's no evidence span.
+          const probeSnippet =
+            r.headline_evidence && r.headline_evidence.length > 20
+              ? r.headline_evidence
+              : r.source_quote;
+          const widened = md ? widenContext(md, probeSnippet) : probeSnippet;
           const m = await client.messages.create({
             model: "claude-sonnet-4-6",
             max_tokens: 220,
