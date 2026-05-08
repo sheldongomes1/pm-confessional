@@ -43,11 +43,11 @@ export function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
-  // Default to one prolific guest so a fresh visit shows a curated subset
-  // (~25 confessions) instead of the full ~1.8k archive — much easier to skim.
-  const [selectedGuest, setSelectedGuest] = useState<string | undefined>(
-    "Shreyas Doshi"
-  );
+  // Show the full archive on first load — the page itself paginates at
+  // limit=50 per request, and the prominent total count ("X confessions")
+  // is the headline stat. Don't pre-filter to a single guest by default;
+  // it makes the count look much smaller than reality.
+  const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 
