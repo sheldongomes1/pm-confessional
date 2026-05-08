@@ -1,0 +1,24 @@
+Tab 1 — Search / Home
+
+  Issues
+
+  1. Search is broken or random. Query "should I raise prices" returned a sunk-cost lesson and a marketplace cold-start lesson — not the two actual pricing entries that exist (Elena Verna's "pricing took
+  eighteen months" is the obvious match). Either the embedding/keyword index isn't running or it's matching on the wrong text.
+  2. Cards aren't clickable. Hover changes the title to red (suggesting interactivity), but clicking does nothing — no detail page, no permalink, no episode/timestamp link. Sharing a confession is impossible.
+  3. "Selected Entries" hides 40% of the corpus. 10 entries exist (per leaderboard / ingest), only 6 surface on the home page. Lenny Rachitsky, Marty Cagan, Shreyas Doshi confessions are reachable only by
+  applying a filter. There's no "Browse all" / "View archive" link.
+  4. Filter loading state shows wrong count. Clicking "Hiring" briefly shows "0 ENTRIES" with skeletons, then resolves to "1 ENTRIES" after ~1s. Looks broken on first click.
+  5. No result count on search results. Header says SEARCH RESULTS · "should I raise prices" but no "X matches" — and no empty state designed for zero matches.
+  6. Generic author label. Every guest is labeled PM LEADER. Andrew Chen / Marty Cagan / Casey Winters all have specific, well-known roles (a16z, SVPG, ex-Pinterest growth). Generic label wastes a credibility
+  cue.                                   
+  7. Year is shown but not filterable. Topic, Stage, Guest are filters; Year is on every card but not a facet.
+                                         
+  Fixes                           
+                                           
+  - Replace search with semantic match (e.g., embed quotes once with text-embedding-3-small, store in pgvector/sqlite-vec, match on cosine). For 10 rows you can compute it client-side.
+  - Make every card a link to /confession/<slug> with permalink, full episode link + timestamp, and "More from ".                                                                                                  
+  - Add Show all 10 entries below the home grid, or just render all 10 — at this corpus size, "selected" is gatekeeping nothing.
+  - Pre-resolve filter counts before render, or use the same code path for empty/loading so the count never flashes.                                                                                               
+  - Show "X matches found" + a real empty state ("No confessions on that yet — closest matches:").
+  - Replace PM LEADER with the real role per guest (you already know episode → guest → company).                                                                                                                   
+  - Add Year as a fourth filter facet.                       
