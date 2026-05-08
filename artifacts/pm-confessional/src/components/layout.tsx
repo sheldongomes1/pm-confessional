@@ -61,6 +61,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <p className="text-[10px] uppercase tracking-widest opacity-50">
             A private space for public failures
           </p>
+          <p className="text-[9px] uppercase tracking-widest opacity-30 mt-6">
+            Anonymous usage analytics via PostHog (no personal data collected)
+          </p>
         </div>
       </footer>
     </div>

@@ -11,6 +11,7 @@ import {
   getListRegretsQueryKey,
 } from "@workspace/api-client-react";
 import { RegretCard } from "@/components/regret-card";
+import { track } from "@/lib/analytics";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,8 +89,38 @@ export function Home() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-    searchMutation.mutate({ data: { query: query.trim(), limit: 12 } });
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    track("search_submitted", {
+      query: trimmed,
+      query_length: trimmed.length,
+      query_word_count: trimmed.split(/\s+/).length,
+      had_active_filters: hasActiveFilters,
+      active_topic: selectedTopic ?? null,
+      active_stage: selectedStage ?? null,
+      active_guest: selectedGuest ?? null,
+      active_year: selectedYear ?? null,
+    });
+    searchMutation.mutate(
+      { data: { query: trimmed, limit: 12 } },
+      {
+        onSuccess: (resp) => {
+          track("search_completed", {
+            query: trimmed,
+            match_count: resp.match_count ?? 0,
+            result_count: resp.regrets?.length ?? 0,
+            is_fallback: resp.is_fallback ?? false,
+            zero_results: (resp.regrets?.length ?? 0) === 0,
+          });
+        },
+        onError: (err) => {
+          track("search_failed", {
+            query: trimmed,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        },
+      },
+    );
   };
 
   const isSearching = searchMutation.isPending;
@@ -107,10 +138,29 @@ export function Home() {
     (hasSearched && (searchResults?.length ?? 0) === 0);
 
   const clearFilters = () => {
+    track("filters_cleared", {
+      had_topic: !!selectedTopic,
+      had_stage: !!selectedStage,
+      had_guest: !!selectedGuest,
+      had_year: !!selectedYear,
+    });
     setSelectedTopic(undefined);
     setSelectedStage(undefined);
     setSelectedGuest(undefined);
     setSelectedYear(undefined);
+  };
+
+  const recordFilter = (
+    dimension: "topic" | "stage" | "year" | "guest",
+    value: string | undefined,
+    previous: string | undefined,
+  ) => {
+    track("filter_changed", {
+      dimension,
+      value: value ?? null,
+      previous: previous ?? null,
+      action: value ? (previous ? "switched" : "applied") : "removed",
+    });
   };
 
   const activeFilterChips: { label: string; onRemove: () => void }[] = [];
@@ -238,9 +288,11 @@ export function Home() {
                       return (
                         <button
                           key={cat.label}
-                          onClick={() =>
-                            setSelectedTopic(active ? undefined : cat.label)
-                          }
+                          onClick={() => {
+                            const next = active ? undefined : cat.label;
+                            recordFilter("topic", next, selectedTopic);
+                            setSelectedTopic(next);
+                          }}
                           className={`w-full flex items-center justify-between text-left transition-colors ${
                             active
                               ? "text-primary font-bold"
@@ -273,9 +325,11 @@ export function Home() {
                       return (
                         <button
                           key={cat.label}
-                          onClick={() =>
-                            setSelectedStage(active ? undefined : cat.label)
-                          }
+                          onClick={() => {
+                            const next = active ? undefined : cat.label;
+                            recordFilter("stage", next, selectedStage);
+                            setSelectedStage(next);
+                          }}
                           className={`w-full flex items-center justify-between text-left transition-colors ${
                             active
                               ? "text-primary font-bold"
@@ -313,9 +367,11 @@ export function Home() {
                         return (
                           <button
                             key={cat.label}
-                            onClick={() =>
-                              setSelectedYear(active ? undefined : cat.label)
-                            }
+                            onClick={() => {
+                              const next = active ? undefined : cat.label;
+                              recordFilter("year", next, selectedYear);
+                              setSelectedYear(next);
+                            }}
                             className={`w-full flex items-center justify-between text-left transition-colors ${
                               active
                                 ? "text-primary font-bold"
@@ -393,7 +449,9 @@ export function Home() {
                                   key={guest.name}
                                   value={guest.name}
                                   onSelect={(value) => {
-                                    setSelectedGuest(isSelected ? undefined : value);
+                                    const next = isSelected ? undefined : value;
+                                    recordFilter("guest", next, selectedGuest);
+                                    setSelectedGuest(next);
                                     setGuestPickerOpen(false);
                                   }}
                                   className="rounded-none px-3 py-2 cursor-pointer aria-selected:bg-secondary aria-selected:text-foreground flex items-center justify-between gap-2"

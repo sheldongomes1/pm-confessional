@@ -10,6 +10,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { GuestConfessionsDialog } from "@/components/guest-confessions-dialog";
 import { CountUp } from "@/components/count-up";
+import { track } from "@/lib/analytics";
 
 export function Leaderboard() {
   const { data, isLoading } = useGetLeaderboard({
@@ -194,7 +195,15 @@ export function Leaderboard() {
                 return (
                   <div
                     key={entry.guest_name}
-                    onClick={() => setSelectedGuest(entry.guest_name)}
+                    onClick={() => {
+                      track("leaderboard_guest_opened", {
+                        guest_name: entry.guest_name,
+                        regret_count: entry.regret_count,
+                        episode_count: entry.episode_count,
+                        rank: index + 1,
+                      });
+                      setSelectedGuest(entry.guest_name);
+                    }}
                     className={`group py-8 px-4 flex items-center justify-between transition-colors cursor-pointer hover:bg-secondary/30 ${
                       isFirst ? "bg-card/50" : ""
                     }`}

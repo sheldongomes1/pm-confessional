@@ -6,6 +6,7 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import { Home } from "@/pages/home";
 import { Leaderboard } from "@/pages/leaderboard";
+import { usePageviews } from "@/lib/analytics";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,6 +18,7 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  usePageviews();
   return (
     <Switch>
       <Route path="/" component={Home} />

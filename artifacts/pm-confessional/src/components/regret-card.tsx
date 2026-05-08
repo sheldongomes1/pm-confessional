@@ -9,10 +9,29 @@ import {
 } from "@/components/ui/dialog";
 import { Regret } from "@workspace/api-client-react";
 import { roleFor } from "@/lib/guest-roles";
+import { track } from "@/lib/analytics";
 import { ExternalLink } from "lucide-react";
 
 export function RegretCard({ regret }: { regret: Regret }) {
   const [open, setOpen] = useState(false);
+
+  const openCard = () => {
+    if (open) return;
+    setOpen(true);
+    track("regret_card_opened", {
+      regret_id: regret.id,
+      guest_name: regret.guest_name,
+      topic_tag: regret.topic_tag,
+      stage: regret.stage,
+      episode_title: regret.episode_title,
+      episode_year: regret.episode_date
+        ? new Date(regret.episode_date).getFullYear()
+        : null,
+      has_episode_url:
+        typeof regret.episode_url === "string" &&
+        /^https?:\/\//i.test(regret.episode_url),
+    });
+  };
 
   // Prefer the extractor's verbatim headline_evidence span (the exact words
   // the model identified as proving the confession) over the windowed
@@ -46,11 +65,11 @@ export function RegretCard({ regret }: { regret: Regret }) {
       <Card
         role="button"
         tabIndex={0}
-        onClick={() => setOpen(true)}
+        onClick={openCard}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setOpen(true);
+            openCard();
           }
         }}
         className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -132,6 +151,14 @@ export function RegretCard({ regret }: { regret: Regret }) {
                 href={regret.episode_url ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() =>
+                  track("episode_link_clicked", {
+                    regret_id: regret.id,
+                    guest_name: regret.guest_name,
+                    episode_title: regret.episode_title,
+                    episode_url: regret.episode_url ?? null,
+                  })
+                }
                 className="inline-flex items-center gap-2 text-xs uppercase tracking-widest font-bold text-primary hover:text-foreground transition-colors border-b border-primary pb-1"
                 data-testid="link-episode-source"
               >
