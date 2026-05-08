@@ -31,7 +31,6 @@ export function Home() {
       {/* Hero Section */}
       <section className="pt-32 pb-24 px-6 border-b border-border">
         <div className="container mx-auto max-w-4xl text-center">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-primary font-bold mb-8">The PM Confessional</p>
           <h1 className="text-5xl md:text-7xl font-serif text-foreground leading-[1.1] tracking-tight font-normal mb-8">
             What decision are you facing right now?
           </h1>
