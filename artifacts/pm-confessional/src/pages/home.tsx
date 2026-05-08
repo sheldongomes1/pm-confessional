@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { keepPreviousData } from "@tanstack/react-query";
 import {
   useSearchRegrets,
   useListRegrets,
@@ -7,6 +8,7 @@ import {
   useGetLeaderboard,
   getGetCategoriesQueryKey,
   getGetLeaderboardQueryKey,
+  getListRegretsQueryKey,
 } from "@workspace/api-client-react";
 import { RegretCard } from "@/components/regret-card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,7 @@ export function Home() {
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
   const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
+  const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 
   const searchMutation = useSearchRegrets();
@@ -57,14 +60,27 @@ export function Home() {
     .map((e) => ({ name: e.guest_name, count: e.regret_count }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const hasActiveFilters = Boolean(selectedTopic || selectedStage || selectedGuest);
+  const hasActiveFilters = Boolean(
+    selectedTopic || selectedStage || selectedGuest || selectedYear
+  );
 
-  const { data: listData, isLoading: isLoadingList } = useListRegrets({
+  const listParams = {
     topic_tag: selectedTopic,
     stage: selectedStage,
     guest_name: selectedGuest,
-    limit: hasActiveFilters ? 50 : 6,
-  });
+    year: selectedYear ? parseInt(selectedYear, 10) : undefined,
+    limit: 50,
+  };
+  const { data: listData, isLoading: isLoadingList } = useListRegrets(
+    listParams,
+    {
+      // Keep previous results visible during refetch so the count never flashes "0"
+      query: {
+        queryKey: getListRegretsQueryKey(listParams),
+        placeholderData: keepPreviousData,
+      },
+    }
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,17 +90,23 @@ export function Home() {
 
   const isSearching = searchMutation.isPending;
   const searchResults = searchMutation.data?.regrets;
+  const searchMatchCount = searchMutation.data?.match_count ?? 0;
+  const searchIsFallback = searchMutation.data?.is_fallback ?? false;
+  // Use the query that came back with the response, not the live input —
+  // otherwise editing the input after submitting desyncs the header label.
+  const submittedQuery = searchMutation.data?.query ?? "";
   const hasSearched = searchMutation.isSuccess;
 
   const regretsToShow = hasSearched ? searchResults : listData?.regrets;
   const showEmptyState =
-    (!isLoadingList && listData?.regrets.length === 0 && !hasSearched) ||
-    (hasSearched && searchResults?.length === 0);
+    (!isLoadingList && (listData?.regrets.length ?? 0) === 0 && !hasSearched) ||
+    (hasSearched && (searchResults?.length ?? 0) === 0);
 
   const clearFilters = () => {
     setSelectedTopic(undefined);
     setSelectedStage(undefined);
     setSelectedGuest(undefined);
+    setSelectedYear(undefined);
   };
 
   const activeFilterChips: { label: string; onRemove: () => void }[] = [];
@@ -104,6 +126,12 @@ export function Home() {
     activeFilterChips.push({
       label: selectedGuest,
       onRemove: () => setSelectedGuest(undefined),
+    });
+  }
+  if (selectedYear) {
+    activeFilterChips.push({
+      label: selectedYear,
+      onRemove: () => setSelectedYear(undefined),
     });
   }
 
@@ -149,7 +177,7 @@ export function Home() {
           <Collapsible
             open={filtersOpen}
             onOpenChange={setFiltersOpen}
-            className="mt-12 max-w-3xl mx-auto"
+            className="mt-12 max-w-4xl mx-auto"
           >
             <div className="flex items-center justify-center gap-6">
               <CollapsibleTrigger asChild>
@@ -194,7 +222,7 @@ export function Home() {
             )}
 
             <CollapsibleContent className="mt-8">
-              <div className="border border-border bg-card/40 p-8 grid grid-cols-1 md:grid-cols-3 gap-10 text-left">
+              <div className="border border-border bg-card/40 p-8 grid grid-cols-1 md:grid-cols-4 gap-10 text-left">
                 {/* Topics */}
                 <div>
                   <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4 pb-3 border-b border-border">
@@ -233,7 +261,7 @@ export function Home() {
                 {/* Stage */}
                 <div>
                   <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4 pb-3 border-b border-border">
-                    Company stage
+                    Stage
                   </h3>
                   <div className="space-y-2">
                     {categories?.by_stage.map((cat) => {
@@ -262,6 +290,47 @@ export function Home() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+
+                {/* Year */}
+                <div>
+                  <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4 pb-3 border-b border-border">
+                    Year
+                  </h3>
+                  <div className="space-y-2">
+                    {(categories?.by_year ?? []).length === 0 ? (
+                      <p className="text-xs italic text-muted-foreground/70 font-serif">
+                        No dated entries
+                      </p>
+                    ) : (
+                      categories?.by_year.map((cat) => {
+                        const active = selectedYear === cat.label;
+                        return (
+                          <button
+                            key={cat.label}
+                            onClick={() =>
+                              setSelectedYear(active ? undefined : cat.label)
+                            }
+                            className={`w-full flex items-center justify-between text-left transition-colors ${
+                              active
+                                ? "text-primary font-bold"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                            data-testid={`filter-year-${cat.label}`}
+                          >
+                            <span className="text-sm font-serif italic font-mono">
+                              {cat.label}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono ${active ? "text-primary" : "text-border"}`}
+                            >
+                              {cat.count}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -358,40 +427,68 @@ export function Home() {
       <section className="py-20 px-6 flex-1 bg-background">
         <div className="container mx-auto max-w-7xl">
           {hasSearched ? (
-            <div className="mb-12 flex items-center justify-between border-b border-border pb-4">
+            <div className="mb-12 flex items-end justify-between border-b border-border pb-4 gap-6 flex-wrap">
               <div>
                 <h2 className="text-sm font-sans uppercase tracking-widest text-muted-foreground mb-2">
-                  Search Results
+                  {searchIsFallback
+                    ? "No exact match — closest by topic"
+                    : "Search Results"}
                 </h2>
-                <p className="text-3xl font-serif font-normal text-foreground">"{query}"</p>
+                <p
+                  className="text-3xl font-serif font-normal text-foreground"
+                  data-testid="text-search-query"
+                >
+                  "{submittedQuery}"
+                </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => searchMutation.reset()}
-                className="text-xs uppercase tracking-wider rounded-none"
-              >
-                Clear Search
-              </Button>
+              <div className="flex items-center gap-4">
+                <span
+                  className="text-xs uppercase tracking-widest text-muted-foreground font-bold"
+                  data-testid="text-search-match-count"
+                >
+                  {searchIsFallback
+                    ? `${searchResults?.length ?? 0} closest`
+                    : `${searchMatchCount} ${searchMatchCount === 1 ? "match" : "matches"}`}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => searchMutation.reset()}
+                  className="text-xs uppercase tracking-wider rounded-none"
+                >
+                  Clear Search
+                </Button>
+              </div>
             </div>
           ) : hasActiveFilters ? (
             <div className="mb-12 flex items-center justify-between border-b border-border pb-4">
               <h2 className="text-sm font-sans uppercase tracking-widest text-muted-foreground">
                 Filtered Archive
               </h2>
-              <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
-                {listData?.total ?? 0} entries
-              </span>
+              {/* Only render the count once data is loaded — avoids "0 entries" flash */}
+              {listData && (
+                <span
+                  className="text-xs uppercase tracking-widest text-muted-foreground font-bold"
+                  data-testid="text-filtered-count"
+                >
+                  {listData.total} {listData.total === 1 ? "entry" : "entries"}
+                </span>
+              )}
             </div>
           ) : !showEmptyState ? (
-            <div className="mb-12 text-center">
-              <h2 className="text-xs font-sans uppercase tracking-widest text-muted-foreground border-b border-border pb-4 inline-block">
-                Selected Entries
+            <div className="mb-12 flex items-center justify-between border-b border-border pb-4">
+              <h2 className="text-xs font-sans uppercase tracking-widest font-bold text-muted-foreground">
+                The Archive
               </h2>
+              {listData && (
+                <span className="text-xs uppercase tracking-widest text-muted-foreground font-bold">
+                  {listData.total} {listData.total === 1 ? "confession" : "confessions"}
+                </span>
+              )}
             </div>
           ) : null}
 
-          {isSearching || (isLoadingList && !hasSearched) ? (
+          {isSearching || (isLoadingList && !hasSearched && !listData) ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {[1, 2, 3, 4].map((i) => (
                 <div

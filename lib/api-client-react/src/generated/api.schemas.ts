@@ -65,6 +65,10 @@ export interface SearchRegretsBody {
 export interface SearchRegretsResponse {
   regrets: Regret[];
   query: string;
+  /** Number of regrets the model judged relevant (>=4 score) */
+  match_count: number;
+  /** True when no real matches were found and topic-related fallbacks are returned instead */
+  is_fallback: boolean;
 }
 
 export interface CategoryCount {
@@ -75,6 +79,7 @@ export interface CategoryCount {
 export interface CategoriesResponse {
   by_topic: CategoryCount[];
   by_stage: CategoryCount[];
+  by_year: CategoryCount[];
 }
 
 export interface YearTopicCount {
@@ -153,6 +158,7 @@ export type ListRegretsParams = {
   topic_tag?: string;
   stage?: string;
   guest_name?: string;
+  year?: number;
   limit?: number;
   offset?: number;
 };

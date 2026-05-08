@@ -1,5 +1,7 @@
+import { Link } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
+import { roleFor } from "@/lib/guest-roles";
 
 export function RegretCard({ regret }: { regret: Regret }) {
   // Strip any quote characters the model may have included so the hanging
@@ -9,54 +11,62 @@ export function RegretCard({ regret }: { regret: Regret }) {
     .replace(/^["“”'`]+/, "")
     .replace(/["“”'`]+$/, "");
 
+  const role = roleFor(regret.guest_name, regret.company);
+
   return (
-    <Card
-      className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none"
-      data-testid={`regret-card-${regret.id}`}
+    <Link
+      href={`/confession/${regret.id}`}
+      className="block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      data-testid={`regret-card-link-${regret.id}`}
     >
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase tracking-widest font-bold text-primary">
-            {regret.topic_tag}
-          </span>
-          <span className="w-1 h-1 bg-border rounded-full" />
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            {regret.stage} Stage
+      <Card
+        className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none cursor-pointer"
+        data-testid={`regret-card-${regret.id}`}
+      >
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-primary">
+              {regret.topic_tag}
+            </span>
+            <span className="w-1 h-1 bg-border rounded-full" />
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {regret.stage} Stage
+            </span>
+          </div>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {regret.episode_date
+              ? new Date(regret.episode_date).getFullYear()
+              : "Date Unknown"}
           </span>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono">
-          {regret.episode_date
-            ? new Date(regret.episode_date).getFullYear()
-            : "Date Unknown"}
-        </span>
-      </div>
 
-      <div className="flex-1 flex flex-col">
-        <h3 className="font-serif text-2xl md:text-3xl font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500">
-          {regret.regret_statement}
-        </h3>
+        <div className="flex-1 flex flex-col">
+          <h3 className="font-serif text-2xl md:text-3xl font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500">
+            {regret.regret_statement}
+          </h3>
 
-        <blockquote className="relative pl-6 border-l border-primary/30 mb-8 mt-auto">
-          <span
-            aria-hidden="true"
-            className="absolute -left-1 -top-4 font-serif text-6xl text-primary/30 leading-none select-none"
-          >
-            “
-          </span>
-          <p className="text-lg md:text-xl font-serif text-muted-foreground italic leading-relaxed">
-            {cleanQuote}
+          <blockquote className="relative pl-6 border-l border-primary/30 mb-8 mt-auto">
+            <span
+              aria-hidden="true"
+              className="absolute -left-1 -top-4 font-serif text-6xl text-primary/30 leading-none select-none"
+            >
+              “
+            </span>
+            <p className="text-lg md:text-xl font-serif text-muted-foreground italic leading-relaxed">
+              {cleanQuote}
+            </p>
+          </blockquote>
+        </div>
+
+        <div className="pt-6 border-t border-border/40 mt-auto">
+          <p className="font-sans font-bold text-sm text-foreground uppercase tracking-wide">
+            {regret.guest_name}
           </p>
-        </blockquote>
-      </div>
-
-      <div className="pt-6 border-t border-border/40 mt-auto">
-        <p className="font-sans font-bold text-sm text-foreground uppercase tracking-wide">
-          {regret.guest_name}
-        </p>
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-1">
-          {regret.company || "PM Leader"}
-        </p>
-      </div>
-    </Card>
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-1">
+            {role}
+          </p>
+        </div>
+      </Card>
+    </Link>
   );
 }

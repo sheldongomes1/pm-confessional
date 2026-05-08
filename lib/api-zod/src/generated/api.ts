@@ -25,6 +25,7 @@ export const ListRegretsQueryParams = zod.object({
   topic_tag: zod.coerce.string().optional(),
   stage: zod.coerce.string().optional(),
   guest_name: zod.coerce.string().optional(),
+  year: zod.coerce.number().optional(),
   limit: zod.coerce.number().default(listRegretsQueryLimitDefault),
   offset: zod.coerce.number().default(listRegretsQueryOffsetDefault),
 });
@@ -97,6 +98,14 @@ export const SearchRegretsResponse = zod.object({
     }),
   ),
   query: zod.string(),
+  match_count: zod
+    .number()
+    .describe("Number of regrets the model judged relevant (>=4 score)"),
+  is_fallback: zod
+    .boolean()
+    .describe(
+      "True when no real matches were found and topic-related fallbacks are returned instead",
+    ),
 });
 
 /**
@@ -110,6 +119,12 @@ export const GetCategoriesResponse = zod.object({
     }),
   ),
   by_stage: zod.array(
+    zod.object({
+      label: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  by_year: zod.array(
     zod.object({
       label: zod.string(),
       count: zod.number(),

@@ -49,6 +49,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: year
+          in: query
+          schema:
+            type: integer
         - name: limit
           in: query
           schema:
@@ -260,9 +264,17 @@ components:
             $ref: "#/components/schemas/Regret"
         query:
           type: string
+        match_count:
+          type: integer
+          description: Number of regrets the model judged relevant (>=4 score)
+        is_fallback:
+          type: boolean
+          description: True when no real matches were found and topic-related fallbacks are returned instead
       required:
         - regrets
         - query
+        - match_count
+        - is_fallback
 
     CategoryCount:
       type: object
@@ -286,9 +298,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CategoryCount"
+        by_year:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
       required:
         - by_topic
         - by_stage
+        - by_year
 
     YearTopicCount:
       type: object
