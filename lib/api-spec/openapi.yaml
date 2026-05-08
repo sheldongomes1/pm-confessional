@@ -207,7 +207,8 @@ components:
           type: ["string", "null"]
         stage:
           type: string
-          enum: [early, growth, scale, unknown]
+          enum: [early, growth, scale, general, unknown]
+          description: "`unknown` is legacy and being phased out — new rows use `general`."
         topic_tag:
           type: string
           enum: [hiring, pricing, product, growth, culture, fundraising, timing, customers, other]
@@ -215,6 +216,9 @@ components:
           type: string
         source_quote:
           type: string
+        headline_evidence:
+          type: ["string", "null"]
+          description: Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).
         episode_url:
           type: ["string", "null"]
         relevance_score:

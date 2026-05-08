@@ -27,10 +27,14 @@ export const regretsTable = pgTable("regrets", {
   episode_title: text("episode_title").notNull(),
   episode_date: text("episode_date"),
   company: text("company"),
-  stage: text("stage").notNull().default("unknown"),
+  stage: text("stage").notNull().default("general"),
   topic_tag: text("topic_tag").notNull().default("other"),
   regret_statement: text("regret_statement").notNull(),
   source_quote: text("source_quote").notNull(),
+  // Verbatim 5-30 word span the extractor identifies as the strongest evidence
+  // for the headline. Strictly more reliable than the windowed source_quote
+  // because the extractor sees the full ~800-word chunk before choosing it.
+  headline_evidence: text("headline_evidence"),
   episode_url: text("episode_url"),
   episode_id: integer("episode_id").references(() => episodesTable.id),
   embedding: text("embedding"),

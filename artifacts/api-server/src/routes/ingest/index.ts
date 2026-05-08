@@ -510,6 +510,7 @@ async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
                 topic_tag: result.topic_tag || "other",
                 regret_statement: result.regret_statement,
                 source_quote: chunk.slice(0, 500),
+                headline_evidence: result.headline_evidence ?? null,
                 embedding: null,
               });
               perEpisodeRegrets++;

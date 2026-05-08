@@ -9,12 +9,16 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * `unknown` is legacy and being phased out — new rows use `general`.
+ */
 export type RegretStage = (typeof RegretStage)[keyof typeof RegretStage];
 
 export const RegretStage = {
   early: "early",
   growth: "growth",
   scale: "scale",
+  general: "general",
   unknown: "unknown",
 } as const;
 
@@ -41,10 +45,16 @@ export interface Regret {
   episode_date?: string | null;
   /** @nullable */
   company?: string | null;
+  /** `unknown` is legacy and being phased out — new rows use `general`. */
   stage: RegretStage;
   topic_tag: RegretTopicTag;
   regret_statement: string;
   source_quote: string;
+  /**
+   * Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).
+   * @nullable
+   */
+  headline_evidence?: string | null;
   /** @nullable */
   episode_url?: string | null;
   /** @nullable */

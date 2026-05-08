@@ -14,9 +14,15 @@ import { ExternalLink } from "lucide-react";
 export function RegretCard({ regret }: { regret: Regret }) {
   const [open, setOpen] = useState(false);
 
-  // Strip any quote characters the model may have included so the hanging
-  // glyph isn't rendered twice.
-  const cleanQuote = regret.source_quote
+  // Prefer the extractor's verbatim headline_evidence span (the exact words
+  // the model identified as proving the confession) over the windowed
+  // source_quote (first 500 chars of an 800-word chunk, often truncated
+  // mid-sentence or capturing the host's intro to the next question).
+  const rawQuote =
+    regret.headline_evidence && regret.headline_evidence.trim().length > 0
+      ? regret.headline_evidence
+      : regret.source_quote;
+  const cleanQuote = rawQuote
     .trim()
     .replace(/^["“”'`]+/, "")
     .replace(/["“”'`]+$/, "");

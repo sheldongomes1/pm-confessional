@@ -1,49 +1,67 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
-export const REGRET_EXTRACTION_PROMPT = `You are analyzing a single podcast transcript passage for a tool called "The PM Confessional".
+export const REGRET_EXTRACTION_PROMPT = `You are analyzing a single podcast transcript passage for a tool called "The PM Confessional". This product collects PERSONAL CONFESSIONS — moments where a guest admits THEIR OWN mistake or a lesson THEY personally learned the hard way. It is NOT a collection of generic PM advice.
 
-GROUNDING RULES — these are non-negotiable:
+GROUNDING RULES — non-negotiable:
 1. The ONLY information you may use is the passage between <passage> tags below.
-2. You must NOT use any outside knowledge: do not assume the speaker's identity, employer, industry, products, funding history, biography, well-known frameworks, or anything you might "know" about them. Treat the passage as the only source of truth.
+2. You must NOT use outside knowledge: do not assume the speaker's identity, employer, industry, products, funding history, biography, frameworks, or anything you might "know" about them. The passage is the only source of truth.
 3. Do NOT add company names, product names, dollar figures, percentages, dates, head counts, or proper nouns that are not literally present in the passage.
-4. Do NOT generalize from the passage to broader claims (e.g. don't say "all marketplaces fail without supply" if the passage only describes one marketplace).
-5. If the passage does not contain enough material to write a faithful, grounded headline, return null. Returning null is always safer than guessing.
+4. Do NOT generalize from the passage to broader claims.
+5. Returning null is ALWAYS safer than guessing. Be aggressive about returning null — most passages will not contain a real confession.
+
+CONFESSION RULES — also non-negotiable. The passage qualifies ONLY if BOTH are true:
+A. The speaker is using FIRST PERSON about THEMSELVES ("I", "my", "we", "our", "us", "me") AND
+B. They are taking ownership of a mistake, regret, failure, or lesson they personally learned the hard way.
+
+DO NOT extract a regret if any of these apply:
+- The passage is the speaker giving generic advice, theory, or observations about what people/teams/companies/founders/PMs do in general (even if they say "I think you should..." — that is advice, not a confession).
+- The passage is about someone else's mistake (a colleague, a portfolio company, "I've seen founders who...", "people often...").
+- The mistake is hypothetical or framed as "imagine if you..." or "the trap is when you...".
+- The speaker is the host (look for "Lenny Rachitsky" or interview-style questions).
+- The passage is a sponsor read, intro, outro, or transition.
+
+Look for telltale confession verbs/phrases: "I made the mistake of...", "we got this wrong", "I should have...", "I wish I had...", "looking back, I...", "the biggest lesson I learned was...", "what I regret is...", "I underestimated...", "we waited too long to...", "I built/shipped/hired the wrong...".
+
+Look for telltale red flags that mean SKIP: "the trick is", "you should", "founders need to", "the problem with PMs is", "the way to think about this is", "people often", "in my experience working with X companies", "the framework I use".
 
 YOUR TASK:
-Identify whether the passage contains a regret, mistake, or hard-won lesson the speaker takes responsibility for. If yes, distill it into a SHORT magazine-style HEADLINE.
+If and only if the passage is a genuine personal confession matching the rules above, distill it into a SHORT magazine-style HEADLINE.
 
 Headline rules:
 - 6 to 12 words MAXIMUM. Aim for 8.
-- Punchy, declarative, with a point of view. Sounds like a confession or hard-won wisdom.
-- Use first person ("I shipped before...") OR imperative ("Don't ship before customers can finish onboarding").
+- Punchy, declarative, FIRST PERSON ("I shipped before...", "We monetized too late..."). Imperatives like "Don't ship..." are NO LONGER ALLOWED — they read as advice, not confession.
+- Past tense preferred (a confession is about something that already happened to the speaker).
 - Every concept in the headline must be traceable to a span in the passage.
 - Do NOT restate the quote. Distill the LESSON behind it.
 - No proper nouns unless the proper noun appears in the passage.
 - No quotes around the headline.
 
-Strong examples (lesson distilled, all words supported by the passage):
+Strong examples (true confessions, first person, past tense):
   • "I confused velocity with creating customer value."
   • "We monetized two years too late."
-  • "Don't open demand before supply can deliver."
+  • "I shipped onboarding before anyone could finish it."
+  • "We hired senior PMs before we had a product."
 
-Weak examples (DO NOT do this):
-  • Restating the quote: "I didn't test onboarding early enough — we spent 4 months..."
-  • Adding outside facts: "At Stripe, I waited too long to monetize." (only do this if "Stripe" appears in the passage)
-  • Inventing numbers: "I lost 80% of my users." (only if those numbers are in the passage)
+Weak examples (DO NOT do this — return null instead):
+  • Imperative dressed up as wisdom: "Don't open demand before supply can deliver." → that's advice, not confession
+  • Generic observation: "Most PMs confuse output with outcome." → not the speaker owning anything
+  • Third party: "I've seen teams ship before they're ready." → about other people
+  • Restating the quote verbatim: "I didn't test onboarding early enough — we spent 4 months..."
 
 CLASSIFICATION:
 - topic_tag: pick the single best label STRICTLY from cues in the passage. Choose from: hiring, pricing, product, growth, culture, fundraising, timing, customers, other.
 - stage: pick from early, growth, scale, general — based ONLY on phrases in the passage like "early stage", "after our Series B", "at scale", etc. If the passage gives no hint, return "general".
 
-EVIDENCE:
-- headline_evidence: a short verbatim span (5-30 words) copied EXACTLY from the passage that justifies the headline. Must be a contiguous substring of the passage.
+EVIDENCE — CRITICAL:
+- headline_evidence: a short verbatim span (8-40 words) copied EXACTLY from the passage that proves this is the speaker's own confession. Must be a contiguous substring of the passage and must contain at least one first-person pronoun ("I", "my", "we", "our", "us", "me") referring to the speaker themselves.
+- If you cannot find such a verbatim span, you MUST return null for both regret_statement and headline_evidence. There are no exceptions.
 
 Respond with ONLY a JSON object, no preamble:
 {
-  "regret_statement": "6-12 word headline grounded in the passage, or null",
+  "regret_statement": "6-12 word first-person past-tense headline grounded in the passage, or null",
   "topic_tag": "hiring|pricing|product|growth|culture|fundraising|timing|customers|other",
   "stage": "early|growth|scale|general",
-  "headline_evidence": "verbatim span from the passage, or null"
+  "headline_evidence": "verbatim span (8-40 words) from the passage containing first-person pronouns, or null"
 }
 
 <passage>

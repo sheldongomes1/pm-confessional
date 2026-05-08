@@ -38,7 +38,11 @@ export const ListRegretsResponse = zod.object({
       episode_title: zod.string(),
       episode_date: zod.string().nullish(),
       company: zod.string().nullish(),
-      stage: zod.enum(["early", "growth", "scale", "unknown"]),
+      stage: zod
+        .enum(["early", "growth", "scale", "general", "unknown"])
+        .describe(
+          "`unknown` is legacy and being phased out — new rows use `general`.",
+        ),
       topic_tag: zod.enum([
         "hiring",
         "pricing",
@@ -52,6 +56,12 @@ export const ListRegretsResponse = zod.object({
       ]),
       regret_statement: zod.string(),
       source_quote: zod.string(),
+      headline_evidence: zod
+        .string()
+        .nullish()
+        .describe(
+          "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+        ),
       episode_url: zod.string().nullish(),
       relevance_score: zod.number().nullish(),
       created_at: zod.string(),
@@ -78,7 +88,11 @@ export const SearchRegretsResponse = zod.object({
       episode_title: zod.string(),
       episode_date: zod.string().nullish(),
       company: zod.string().nullish(),
-      stage: zod.enum(["early", "growth", "scale", "unknown"]),
+      stage: zod
+        .enum(["early", "growth", "scale", "general", "unknown"])
+        .describe(
+          "`unknown` is legacy and being phased out — new rows use `general`.",
+        ),
       topic_tag: zod.enum([
         "hiring",
         "pricing",
@@ -92,6 +106,12 @@ export const SearchRegretsResponse = zod.object({
       ]),
       regret_statement: zod.string(),
       source_quote: zod.string(),
+      headline_evidence: zod
+        .string()
+        .nullish()
+        .describe(
+          "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+        ),
       episode_url: zod.string().nullish(),
       relevance_score: zod.number().nullish(),
       created_at: zod.string(),
@@ -200,7 +220,11 @@ export const GetRegretResponse = zod.object({
   episode_title: zod.string(),
   episode_date: zod.string().nullish(),
   company: zod.string().nullish(),
-  stage: zod.enum(["early", "growth", "scale", "unknown"]),
+  stage: zod
+    .enum(["early", "growth", "scale", "general", "unknown"])
+    .describe(
+      "`unknown` is legacy and being phased out — new rows use `general`.",
+    ),
   topic_tag: zod.enum([
     "hiring",
     "pricing",
@@ -214,6 +238,12 @@ export const GetRegretResponse = zod.object({
   ]),
   regret_statement: zod.string(),
   source_quote: zod.string(),
+  headline_evidence: zod
+    .string()
+    .nullish()
+    .describe(
+      "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+    ),
   episode_url: zod.string().nullish(),
   relevance_score: zod.number().nullish(),
   created_at: zod.string(),
