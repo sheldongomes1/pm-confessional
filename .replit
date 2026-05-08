@@ -33,3 +33,8 @@ externalPort = 8081
 [[ports]]
 localPort = 22013
 externalPort = 3000
+
+[userenv]
+
+[userenv.production]
+DATABASE_URL_OVERRIDE = "postgresql://postgres:password@helium/heliumdb?sslmode=disable"
