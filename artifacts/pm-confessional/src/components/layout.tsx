@@ -12,19 +12,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary/20">
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col bg-background text-foreground dark selection:bg-primary/30">
+      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur-sm">
+        <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group transition-opacity hover:opacity-80">
-            <div className="w-8 h-8 rounded-sm bg-foreground text-background flex items-center justify-center shadow-sm">
-              <BookOpen className="w-4 h-4" />
+            <div className="w-10 h-10 rounded bg-primary text-primary-foreground flex items-center justify-center">
+              <BookOpen className="w-5 h-5" />
             </div>
-            <span
-              className="text-2xl leading-none text-foreground tracking-tight"
-              style={{ fontFamily: "var(--app-font-blackletter)" }}
-            >
-              The PM Confessional
-            </span>
+            <div className="flex flex-col">
+              <span className="font-serif font-medium text-xl tracking-tight leading-none text-foreground">
+                The PM Confessional
+              </span>
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground mt-1">
+                Lessons in Hindsight
+              </span>
+            </div>
           </Link>
           
           <nav className="flex items-center gap-6">
@@ -35,9 +37,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   data-testid={`nav-${item.label.toLowerCase()}`}
-                  className={`text-[11px] uppercase tracking-widest font-semibold transition-colors ${
+                  className={`text-xs uppercase tracking-widest font-medium transition-colors ${
                     isActive
-                      ? "text-primary border-b-2 border-primary pb-1"
+                      ? "text-primary border-b border-primary pb-1"
                       : "text-muted-foreground hover:text-foreground pb-1"
                   }`}
                 >
@@ -53,13 +55,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <footer className="py-12 border-t border-border text-center text-muted-foreground mt-auto bg-background">
+      <footer className="py-12 border-t border-border/40 text-center text-muted-foreground mt-auto bg-background">
         <div className="container mx-auto px-6 max-w-2xl">
-          <p className="font-serif text-lg italic text-foreground/80 mb-4">
+          <p className="font-serif text-lg italic text-foreground/70 mb-4">
             "The pattern recognition that takes a decade to earn takes 10 seconds to access."
           </p>
-          <p className="text-[10px] uppercase tracking-widest opacity-60 font-semibold">
-            A Research Publication for Product Leaders
+          <p className="text-[10px] uppercase tracking-widest opacity-50">
+            A private space for public failures
           </p>
         </div>
       </footer>
