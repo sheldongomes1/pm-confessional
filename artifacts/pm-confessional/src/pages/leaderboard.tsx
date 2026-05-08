@@ -278,7 +278,7 @@ export function Leaderboard() {
                 The record is clean
               </h3>
               <p className="text-muted-foreground font-serif italic">
-                Run the data ingestion pipeline to uncover the truth.
+                No confessions on record yet.
               </p>
             </div>
           ) : (

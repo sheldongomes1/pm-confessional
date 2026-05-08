@@ -6,7 +6,6 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import { Home } from "@/pages/home";
 import { Leaderboard } from "@/pages/leaderboard";
-import { Ingest } from "@/pages/ingest";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,7 +22,6 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/browse">{() => <Redirect to="/" />}</Route>
       <Route path="/leaderboard" component={Leaderboard} />
-      <Route path="/ingest" component={Ingest} />
       <Route component={NotFound} />
     </Switch>
   );

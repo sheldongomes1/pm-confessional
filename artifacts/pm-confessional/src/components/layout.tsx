@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { BookOpen, Trophy, Database, Search } from "lucide-react";
+import { BookOpen, Trophy, Search } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -7,7 +7,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Search", icon: Search },
     { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-    { href: "/ingest", label: "Operations", icon: Database },
   ];
 
   return (

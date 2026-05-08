@@ -527,14 +527,6 @@ export function Home() {
                 >
                   Clear filters
                 </button>
-              ) : !hasSearched ? (
-                <Link
-                  href="/ingest"
-                  className="text-xs uppercase tracking-widest font-bold text-primary hover:text-foreground transition-colors border-b border-primary pb-1"
-                  data-testid="link-ingest-empty"
-                >
-                  Run Ingestion Pipeline
-                </Link>
               ) : null}
             </div>
           ) : (
