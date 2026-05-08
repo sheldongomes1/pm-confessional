@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { keepPreviousData } from "@tanstack/react-query";
 import {
@@ -43,16 +43,13 @@ export function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
-  // Show the full archive on first load — the page itself paginates at
-  // limit=50 per request, and the prominent total count ("X confessions")
-  // is the headline stat. Don't pre-filter to a single guest by default;
-  // it makes the count look much smaller than reality.
-  const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
+  // Default to one prolific guest so a fresh visit shows a curated subset
+  // (~25 confessions) instead of the full ~1.8k archive — much easier to skim.
+  const [selectedGuest, setSelectedGuest] = useState<string | undefined>(
+    "Shreyas Doshi"
+  );
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
-  // Page size for the archive grid. Grows in 50-card increments via "Load more"
-  // so the entire archive is reachable without overwhelming the initial render.
-  const [listLimit, setListLimit] = useState(50);
 
   const searchMutation = useSearchRegrets();
 
@@ -76,7 +73,7 @@ export function Home() {
     stage: selectedStage,
     guest_name: selectedGuest,
     year: selectedYear ? parseInt(selectedYear, 10) : undefined,
-    limit: listLimit,
+    limit: 50,
   };
   const { data: listData, isLoading: isLoadingList } = useListRegrets(
     listParams,
@@ -114,21 +111,7 @@ export function Home() {
     setSelectedStage(undefined);
     setSelectedGuest(undefined);
     setSelectedYear(undefined);
-    setListLimit(50);
   };
-
-  // Reset the page size whenever filter state changes, so a narrowed result
-  // set doesn't carry an inflated limit from a previous "Load more" click
-  // (e.g. user loaded 300 then picked a topic — refetching 300 of the
-  // narrower set wastes bandwidth and feels slow).
-  useEffect(() => {
-    setListLimit(50);
-  }, [selectedTopic, selectedStage, selectedGuest, selectedYear]);
-
-  const canLoadMore =
-    !hasSearched &&
-    listData != null &&
-    listData.regrets.length < listData.total;
 
   const activeFilterChips: { label: string; onRemove: () => void }[] = [];
   if (selectedTopic) {
@@ -547,26 +530,11 @@ export function Home() {
               ) : null}
             </div>
           ) : (
-            <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {regretsToShow?.map((regret) => (
-                  <RegretCard key={regret.id} regret={regret} />
-                ))}
-              </div>
-              {canLoadMore ? (
-                <div className="flex justify-center mt-12">
-                  <button
-                    onClick={() => setListLimit((n) => n + 50)}
-                    disabled={isLoadingList}
-                    className="text-xs uppercase tracking-widest font-bold text-primary hover:text-foreground transition-colors border-b border-primary pb-1 disabled:opacity-50"
-                  >
-                    {isLoadingList
-                      ? "Loading…"
-                      : `Load more (${(listData?.total ?? 0) - (listData?.regrets.length ?? 0)} remaining)`}
-                  </button>
-                </div>
-              ) : null}
-            </>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {regretsToShow?.map((regret) => (
+                <RegretCard key={regret.id} regret={regret} />
+              ))}
+            </div>
           )}
         </div>
       </section>
