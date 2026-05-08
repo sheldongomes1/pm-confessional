@@ -506,7 +506,7 @@ async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
                 episode_url: episode.episode_url,
                 episode_id: episode.id,
                 company: null,
-                stage: result.stage || "unknown",
+                stage: result.stage || "general",
                 topic_tag: result.topic_tag || "other",
                 regret_statement: result.regret_statement,
                 source_quote: chunk.slice(0, 500),

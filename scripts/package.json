@@ -8,7 +8,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.95.0",
     "@types/node": "catalog:",
+    "@types/pg": "^8.18.0",
+    "pg": "^8.20.0",
     "tsx": "catalog:"
   }
 }

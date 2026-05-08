@@ -43,7 +43,11 @@ export function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
-  const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
+  // Default to one prolific guest so a fresh visit shows a curated subset
+  // (~25 confessions) instead of the full ~1.8k archive — much easier to skim.
+  const [selectedGuest, setSelectedGuest] = useState<string | undefined>(
+    "Shreyas Doshi"
+  );
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 

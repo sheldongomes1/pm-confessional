@@ -33,7 +33,7 @@ Weak examples (DO NOT do this):
 
 CLASSIFICATION:
 - topic_tag: pick the single best label STRICTLY from cues in the passage. Choose from: hiring, pricing, product, growth, culture, fundraising, timing, customers, other.
-- stage: pick from early, growth, scale, unknown — based ONLY on phrases in the passage like "early stage", "after our Series B", "at scale", etc. If the passage gives no hint, return "unknown".
+- stage: pick from early, growth, scale, general — based ONLY on phrases in the passage like "early stage", "after our Series B", "at scale", etc. If the passage gives no hint, return "general".
 
 EVIDENCE:
 - headline_evidence: a short verbatim span (5-30 words) copied EXACTLY from the passage that justifies the headline. Must be a contiguous substring of the passage.
@@ -42,7 +42,7 @@ Respond with ONLY a JSON object, no preamble:
 {
   "regret_statement": "6-12 word headline grounded in the passage, or null",
   "topic_tag": "hiring|pricing|product|growth|culture|fundraising|timing|customers|other",
-  "stage": "early|growth|scale|unknown",
+  "stage": "early|growth|scale|general",
   "headline_evidence": "verbatim span from the passage, or null"
 }
 
