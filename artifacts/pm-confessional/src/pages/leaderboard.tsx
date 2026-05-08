@@ -2,8 +2,10 @@ import { useState } from "react";
 import {
   useGetLeaderboard,
   useGetStats,
+  useGetCategories,
   getGetLeaderboardQueryKey,
   getGetStatsQueryKey,
+  getGetCategoriesQueryKey,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GuestConfessionsDialog } from "@/components/guest-confessions-dialog";
@@ -16,11 +18,19 @@ export function Leaderboard() {
   const { data: stats, isLoading: isLoadingStats } = useGetStats({
     query: { queryKey: getGetStatsQueryKey() },
   });
+  const { data: categories } = useGetCategories({
+    query: { queryKey: getGetCategoriesQueryKey() },
+  });
   const [selectedGuest, setSelectedGuest] = useState<string | null>(null);
 
-  const maxTopTopic = stats?.top_topics[0]?.count ?? 0;
   const totalStageDist =
     stats?.stage_distribution.reduce((sum, s) => sum + s.count, 0) ?? 0;
+
+  // Build the per-year confession trend, sorted oldest → newest.
+  const yearTrend = (categories?.by_year ?? [])
+    .map((y) => ({ year: Number(y.label), count: y.count }))
+    .filter((y) => Number.isFinite(y.year))
+    .sort((a, b) => a.year - b.year);
 
   return (
     <div className="container mx-auto px-6 py-20 max-w-5xl">
@@ -56,9 +66,8 @@ export function Leaderboard() {
             ))}
           </div>
         ) : stats ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border border border-border">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border border border-border">
             <StatTile value={stats.total_regrets} label="Confessions" />
-            <StatTile value={stats.total_guests} label="Operators" />
             <StatTile value={stats.total_episodes} label="Episodes" />
             <StatTile
               value={stats.avg_regrets_per_guest}
@@ -71,120 +80,17 @@ export function Leaderboard() {
         ) : null}
       </section>
 
-      {/* Two-column: Top Topics + Year Spotlight */}
-      {!isLoadingStats && stats && stats.top_topics.length > 0 && (
-        <section className="mb-16 grid grid-cols-1 lg:grid-cols-5 gap-px bg-border border border-border">
-          {/* Top 3 Topics */}
-          <div className="lg:col-span-3 bg-background p-10">
-            <h2 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-8 pb-4 border-b border-border">
-              The Three Big Regrets
-            </h2>
-            <div className="space-y-8">
-              {stats.top_topics.map((topic, index) => {
-                const pct =
-                  maxTopTopic > 0 ? (topic.count / maxTopTopic) * 100 : 0;
-                return (
-                  <div
-                    key={topic.label}
-                    data-testid={`top-topic-${topic.label}`}
-                  >
-                    <div className="flex items-baseline justify-between mb-3">
-                      <div className="flex items-baseline gap-4">
-                        <span className="font-mono text-xs text-muted-foreground/60">
-                          {(index + 1).toString().padStart(2, "0")}
-                        </span>
-                        <span className="font-serif text-3xl text-foreground capitalize">
-                          {topic.label}
-                        </span>
-                      </div>
-                      <div className="flex items-baseline gap-2">
-                        <CountUp
-                          value={topic.count}
-                          className="font-serif text-3xl text-primary"
-                        />
-                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-                          entries
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-px bg-border/40 relative overflow-hidden">
-                      <div
-                        className="absolute inset-y-0 left-0 bg-primary transition-all duration-700 h-[2px] -mt-px"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Side panel: Year spotlight + rarest topic */}
-          <div className="lg:col-span-2 bg-background p-10 flex flex-col gap-12">
-            {stats.most_candid_year && (
-              <div data-testid="stat-most-candid-year">
-                <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4 pb-3 border-b border-border">
-                  Most Candid Year
-                </h3>
-                <p className="font-serif text-6xl text-foreground leading-none">
-                  {stats.most_candid_year.year}
-                </p>
-                <p className="text-sm font-serif italic text-muted-foreground mt-3">
-                  <CountUp value={stats.most_candid_year.count} />{" "}
-                  confessions surfaced
-                </p>
-              </div>
-            )}
-
-            {stats.rarest_topic && (
-              <div data-testid="stat-rarest-topic">
-                <h3 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4 pb-3 border-b border-border">
-                  The Quietest Wound
-                </h3>
-                <p className="font-serif text-3xl text-foreground capitalize">
-                  {stats.rarest_topic.label}
-                </p>
-                <p className="text-sm font-serif italic text-muted-foreground mt-3">
-                  Only {stats.rarest_topic.count}{" "}
-                  {stats.rarest_topic.count === 1 ? "operator dared" : "operators dared"}{" "}
-                  to admit it.
-                </p>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Year-by-year ledger */}
-      {!isLoadingStats && stats && stats.top_topic_by_year.length > 0 && (
+      {/* Confessions per year — line chart */}
+      {yearTrend.length > 1 && (
         <section className="mb-20">
           <div className="flex items-center gap-4 mb-8">
             <h2 className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
-              The Annual Ledger — #1 Regret Per Year
+              Confessions by Year
             </h2>
             <span className="flex-1 h-px bg-border" />
           </div>
-          <div className="border border-border divide-y divide-border/50">
-            {stats.top_topic_by_year.map((entry) => (
-              <div
-                key={entry.year}
-                className="px-8 py-6 flex items-center justify-between gap-6"
-                data-testid={`year-row-${entry.year}`}
-              >
-                <span className="font-mono text-2xl text-muted-foreground/70">
-                  {entry.year}
-                </span>
-                <div className="flex-1 mx-6 h-px bg-border/40 hidden md:block" />
-                <div className="flex items-baseline gap-4">
-                  <span className="font-serif text-3xl text-foreground capitalize">
-                    {entry.label}
-                  </span>
-                  <span className="text-[10px] uppercase tracking-widest text-primary font-bold">
-                    {entry.count} {entry.count === 1 ? "entry" : "entries"}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="border border-border bg-background p-10">
+            <YearTrendChart data={yearTrend} />
           </div>
         </section>
       )}
@@ -344,6 +250,119 @@ export function Leaderboard() {
       />
     </div>
   );
+}
+
+function YearTrendChart({ data }: { data: { year: number; count: number }[] }) {
+  // SVG viewBox in abstract units; CSS scales it responsively.
+  const W = 800;
+  const H = 260;
+  const padX = 48;
+  const padTop = 24;
+  const padBottom = 44;
+  const innerW = W - padX * 2;
+  const innerH = H - padTop - padBottom;
+
+  const maxCount = Math.max(...data.map((d) => d.count), 1);
+  // Round the y-axis ceiling up to a tidy round number.
+  const yMax = niceCeil(maxCount);
+
+  const x = (i: number) =>
+    padX + (data.length === 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
+  const y = (v: number) => padTop + innerH - (v / yMax) * innerH;
+
+  const linePath = data
+    .map((d, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(2)} ${y(d.count).toFixed(2)}`)
+    .join(" ");
+
+  // Fill underneath the line for an editorial, restrained shade.
+  const areaPath =
+    `M ${x(0).toFixed(2)} ${(padTop + innerH).toFixed(2)} ` +
+    data.map((d, i) => `L ${x(i).toFixed(2)} ${y(d.count).toFixed(2)}`).join(" ") +
+    ` L ${x(data.length - 1).toFixed(2)} ${(padTop + innerH).toFixed(2)} Z`;
+
+  // 4 horizontal gridlines.
+  const gridSteps = 4;
+  const gridLines = Array.from({ length: gridSteps + 1 }, (_, i) => {
+    const v = (yMax * (gridSteps - i)) / gridSteps;
+    return { y: padTop + (i / gridSteps) * innerH, label: Math.round(v) };
+  });
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full h-auto"
+      preserveAspectRatio="xMidYMid meet"
+      data-testid="year-trend-chart"
+    >
+      {/* Gridlines + y labels */}
+      {gridLines.map((g, i) => (
+        <g key={i}>
+          <line
+            x1={padX}
+            x2={W - padX}
+            y1={g.y}
+            y2={g.y}
+            className="stroke-border/40"
+            strokeWidth={1}
+          />
+          <text
+            x={padX - 10}
+            y={g.y + 4}
+            textAnchor="end"
+            className="fill-muted-foreground/60 font-mono"
+            fontSize="10"
+          >
+            {g.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Area fill */}
+      <path d={areaPath} className="fill-primary/10" />
+
+      {/* Line */}
+      <path
+        d={linePath}
+        fill="none"
+        className="stroke-primary"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+
+      {/* Points */}
+      {data.map((d, i) => (
+        <g key={d.year}>
+          <circle
+            cx={x(i)}
+            cy={y(d.count)}
+            r={3}
+            className="fill-background stroke-primary"
+            strokeWidth={1.5}
+          >
+            <title>{`${d.year}: ${d.count} confessions`}</title>
+          </circle>
+          <text
+            x={x(i)}
+            y={H - 14}
+            textAnchor="middle"
+            className="fill-muted-foreground/70 font-mono"
+            fontSize="11"
+          >
+            {d.year}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function niceCeil(n: number): number {
+  if (n <= 10) return Math.ceil(n / 2) * 2;
+  if (n <= 50) return Math.ceil(n / 5) * 5;
+  if (n <= 100) return Math.ceil(n / 10) * 10;
+  if (n <= 500) return Math.ceil(n / 25) * 25;
+  return Math.ceil(n / 50) * 50;
 }
 
 function StatTile({
