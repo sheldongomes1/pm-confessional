@@ -1,9 +1,19 @@
-import { Link } from "wouter";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Regret } from "@workspace/api-client-react";
 import { roleFor } from "@/lib/guest-roles";
+import { ExternalLink } from "lucide-react";
 
 export function RegretCard({ regret }: { regret: Regret }) {
+  const [open, setOpen] = useState(false);
+
   // Strip any quote characters the model may have included so the hanging
   // glyph isn't rendered twice.
   const cleanQuote = regret.source_quote
@@ -13,14 +23,24 @@ export function RegretCard({ regret }: { regret: Regret }) {
 
   const role = roleFor(regret.guest_name, regret.company);
 
+  // Only treat as a real link if it's an http(s) URL we can actually open.
+  const hasValidUrl =
+    typeof regret.episode_url === "string" &&
+    /^https?:\/\//i.test(regret.episode_url);
+
   return (
-    <Link
-      href={`/confession/${regret.id}`}
-      className="block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      data-testid={`regret-card-link-${regret.id}`}
-    >
+    <>
       <Card
-        className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none cursor-pointer"
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         data-testid={`regret-card-${regret.id}`}
       >
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40">
@@ -67,6 +87,48 @@ export function RegretCard({ regret }: { regret: Regret }) {
           </p>
         </div>
       </Card>
-    </Link>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className="rounded-none border-border bg-card max-w-md p-0"
+          data-testid={`episode-dialog-${regret.id}`}
+        >
+          <div className="p-8">
+            <DialogHeader className="text-left space-y-2 mb-6">
+              <DialogTitle className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
+                Source episode
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Source episode for this confession
+              </DialogDescription>
+              <p
+                className="font-serif text-2xl md:text-3xl font-normal leading-tight text-foreground"
+                data-testid="text-episode-title"
+              >
+                {regret.episode_title}
+              </p>
+            </DialogHeader>
+
+            <p className="text-sm text-muted-foreground font-serif italic mb-8">
+              From Lenny's Podcast
+              {regret.episode_date ? ` · ${regret.episode_date}` : ""}
+            </p>
+
+            {hasValidUrl ? (
+              <a
+                href={regret.episode_url ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-xs uppercase tracking-widest font-bold text-primary hover:text-foreground transition-colors border-b border-primary pb-1"
+                data-testid="link-episode-source"
+              >
+                Listen to episode
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
