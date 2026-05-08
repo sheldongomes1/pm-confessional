@@ -168,19 +168,116 @@ router.get("/regrets/categories", async (_req, res): Promise<void> => {
 });
 
 router.get("/regrets/stats", async (_req, res): Promise<void> => {
-  const [totals] = await db
-    .select({
-      total_regrets: sql<number>`count(*)`,
-      total_guests: sql<number>`count(distinct ${regretsTable.guest_name})`,
-      total_episodes: sql<number>`count(distinct ${regretsTable.episode_title})`,
-    })
-    .from(regretsTable);
+  // Only treat dates that begin with 4 digits as parseable; cast safely.
+  const validDateClause = sql`${regretsTable.episode_date} ~ '^[0-9]{4}'`;
+  const yearExpr = sql<number>`cast(substring(${regretsTable.episode_date} from '^[0-9]{4}') as integer)`;
+
+  const [
+    [totals],
+    topicCounts,
+    stageCounts,
+    yearTopicCounts,
+    yearTotals,
+  ] = await Promise.all([
+    db
+      .select({
+        total_regrets: sql<number>`count(*)`,
+        total_guests: sql<number>`count(distinct ${regretsTable.guest_name})`,
+        total_episodes: sql<number>`count(distinct ${regretsTable.episode_title})`,
+      })
+      .from(regretsTable),
+    db
+      .select({
+        label: regretsTable.topic_tag,
+        count: sql<number>`count(*)`,
+      })
+      .from(regretsTable)
+      .groupBy(regretsTable.topic_tag)
+      .orderBy(desc(sql`count(*)`), asc(regretsTable.topic_tag)),
+    db
+      .select({
+        label: regretsTable.stage,
+        count: sql<number>`count(*)`,
+      })
+      .from(regretsTable)
+      .groupBy(regretsTable.stage)
+      .orderBy(desc(sql`count(*)`), asc(regretsTable.stage)),
+    db
+      .select({
+        year: yearExpr,
+        label: regretsTable.topic_tag,
+        count: sql<number>`count(*)`,
+      })
+      .from(regretsTable)
+      .where(validDateClause)
+      .groupBy(yearExpr, regretsTable.topic_tag),
+    db
+      .select({
+        year: yearExpr,
+        count: sql<number>`count(*)`,
+      })
+      .from(regretsTable)
+      .where(validDateClause)
+      .groupBy(yearExpr)
+      .orderBy(desc(sql`count(*)`), desc(yearExpr)),
+  ]);
+
+  const topicsNormalized = topicCounts.map((r) => ({
+    label: r.label,
+    count: Number(r.count),
+  }));
+
+  // Pick the #1 topic per year (ties broken by alphabetical label for determinism)
+  const yearMap = new Map<number, { label: string; count: number }>();
+  for (const row of yearTopicCounts) {
+    const year = Number(row.year);
+    if (!Number.isFinite(year)) continue;
+    const count = Number(row.count);
+    const existing = yearMap.get(year);
+    if (
+      !existing ||
+      count > existing.count ||
+      (count === existing.count && row.label < existing.label)
+    ) {
+      yearMap.set(year, { label: row.label, count });
+    }
+  }
+  const top_topic_by_year = Array.from(yearMap.entries())
+    .map(([year, v]) => ({ year, label: v.label, count: v.count }))
+    .sort((a, b) => a.year - b.year);
+
+  const mostCandidRow = yearTotals[0];
+  const most_candid_year = mostCandidRow
+    ? { year: Number(mostCandidRow.year), count: Number(mostCandidRow.count) }
+    : null;
+
+  // Pick rarest deterministically: lowest count, then alphabetical label.
+  const rarest_topic =
+    topicsNormalized.length > 0
+      ? [...topicsNormalized].sort(
+          (a, b) => a.count - b.count || a.label.localeCompare(b.label),
+        )[0]
+      : null;
+
+  const total_regrets = Number(totals?.total_regrets ?? 0);
+  const total_guests = Number(totals?.total_guests ?? 0);
+  const avg_regrets_per_guest =
+    total_guests > 0 ? Number((total_regrets / total_guests).toFixed(2)) : 0;
 
   res.json(
     GetStatsResponse.parse({
-      total_regrets: Number(totals?.total_regrets ?? 0),
-      total_guests: Number(totals?.total_guests ?? 0),
+      total_regrets,
+      total_guests,
       total_episodes: Number(totals?.total_episodes ?? 0),
+      top_topics: topicsNormalized.slice(0, 3),
+      top_topic_by_year,
+      most_candid_year,
+      stage_distribution: stageCounts.map((r) => ({
+        label: r.label,
+        count: Number(r.count),
+      })),
+      rarest_topic,
+      avg_regrets_per_guest,
     })
   );
 });

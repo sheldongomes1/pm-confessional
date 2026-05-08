@@ -290,6 +290,31 @@ components:
         - by_topic
         - by_stage
 
+    YearTopicCount:
+      type: object
+      properties:
+        year:
+          type: integer
+        label:
+          type: string
+        count:
+          type: integer
+      required:
+        - year
+        - label
+        - count
+
+    YearCount:
+      type: object
+      properties:
+        year:
+          type: integer
+        count:
+          type: integer
+      required:
+        - year
+        - count
+
     StatsResponse:
       type: object
       properties:
@@ -299,10 +324,44 @@ components:
           type: integer
         total_episodes:
           type: integer
+        top_topics:
+          type: array
+          description: Top 3 most common confession types
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+        top_topic_by_year:
+          type: array
+          description: The #1 confession type for each year (sorted ascending)
+          items:
+            $ref: "#/components/schemas/YearTopicCount"
+        most_candid_year:
+          description: The year with the most confessions
+          oneOf:
+            - $ref: "#/components/schemas/YearCount"
+            - type: "null"
+        stage_distribution:
+          type: array
+          description: Confession counts by company stage
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+        rarest_topic:
+          description: The least-discussed topic with at least one confession
+          oneOf:
+            - $ref: "#/components/schemas/CategoryCount"
+            - type: "null"
+        avg_regrets_per_guest:
+          type: number
+          description: Average number of confessions per guest
       required:
         - total_regrets
         - total_guests
         - total_episodes
+        - top_topics
+        - top_topic_by_year
+        - most_candid_year
+        - stage_distribution
+        - rarest_topic
+        - avg_regrets_per_guest
 
     LeaderboardEntry:
       type: object

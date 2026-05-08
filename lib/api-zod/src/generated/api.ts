@@ -124,6 +124,52 @@ export const GetStatsResponse = zod.object({
   total_regrets: zod.number(),
   total_guests: zod.number(),
   total_episodes: zod.number(),
+  top_topics: zod
+    .array(
+      zod.object({
+        label: zod.string(),
+        count: zod.number(),
+      }),
+    )
+    .describe("Top 3 most common confession types"),
+  top_topic_by_year: zod
+    .array(
+      zod.object({
+        year: zod.number(),
+        label: zod.string(),
+        count: zod.number(),
+      }),
+    )
+    .describe("The"),
+  most_candid_year: zod
+    .union([
+      zod.object({
+        year: zod.number(),
+        count: zod.number(),
+      }),
+      zod.null(),
+    ])
+    .describe("The year with the most confessions"),
+  stage_distribution: zod
+    .array(
+      zod.object({
+        label: zod.string(),
+        count: zod.number(),
+      }),
+    )
+    .describe("Confession counts by company stage"),
+  rarest_topic: zod
+    .union([
+      zod.object({
+        label: zod.string(),
+        count: zod.number(),
+      }),
+      zod.null(),
+    ])
+    .describe("The least-discussed topic with at least one confession"),
+  avg_regrets_per_guest: zod
+    .number()
+    .describe("Average number of confessions per guest"),
 });
 
 /**

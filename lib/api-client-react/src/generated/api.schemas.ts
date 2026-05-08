@@ -77,10 +77,33 @@ export interface CategoriesResponse {
   by_stage: CategoryCount[];
 }
 
+export interface YearTopicCount {
+  year: number;
+  label: string;
+  count: number;
+}
+
+export interface YearCount {
+  year: number;
+  count: number;
+}
+
 export interface StatsResponse {
   total_regrets: number;
   total_guests: number;
   total_episodes: number;
+  /** Top 3 most common confession types */
+  top_topics: CategoryCount[];
+  /** The */
+  top_topic_by_year: YearTopicCount[];
+  /** The year with the most confessions */
+  most_candid_year: YearCount | null;
+  /** Confession counts by company stage */
+  stage_distribution: CategoryCount[];
+  /** The least-discussed topic with at least one confession */
+  rarest_topic: CategoryCount | null;
+  /** Average number of confessions per guest */
+  avg_regrets_per_guest: number;
 }
 
 export interface LeaderboardEntry {
