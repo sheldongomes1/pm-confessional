@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -51,63 +51,63 @@
 }
 
 :root {
-  --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: 'Fraunces', serif;
+  --app-font-sans: 'DM Sans', sans-serif;
+  --app-font-serif: 'Newsreader', serif;
   --app-font-mono: Menlo, monospace;
-  --radius: 0.5rem;
+  --radius: 0;
 
-  /* Dark Amber / Espresso Theme (Dark by default) */
-  --background: 20 20% 6%; /* #12100f */
-  --foreground: 30 15% 85%; /* #dfdcd7 */
+  /* Ink black and oxblood theme */
+  --background: 0 0% 4%;
+  --foreground: 40 10% 90%;
   
-  --border: 25 15% 15%;
-  --input: 25 15% 15%;
-  --ring: 30 70% 45%;
+  --border: 0 0% 15%;
+  --input: 0 0% 12%;
+  --ring: 5 70% 35%;
 
-  --card: 20 15% 9%;
-  --card-foreground: 30 15% 85%;
-  --card-border: 25 15% 15%;
+  --card: 0 0% 6%;
+  --card-foreground: 40 10% 85%;
+  --card-border: 0 0% 15%;
 
-  --popover: 20 15% 9%;
-  --popover-foreground: 30 15% 85%;
-  --popover-border: 25 15% 15%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 40 10% 85%;
+  --popover-border: 0 0% 15%;
 
-  --primary: 30 70% 45%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 5 70% 35%; /* Oxblood */
+  --primary-foreground: 40 10% 95%;
 
-  --secondary: 25 15% 15%;
-  --secondary-foreground: 30 15% 85%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 40 10% 80%;
 
-  --muted: 25 15% 12%;
-  --muted-foreground: 30 15% 60%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 40 10% 60%;
 
-  --accent: 25 15% 15%;
-  --accent-foreground: 30 15% 85%;
+  --accent: 0 0% 10%;
+  --accent-foreground: 40 10% 80%;
 
   --destructive: 0 60% 50%;
   --destructive-foreground: 0 0% 100%;
 }
 
 .dark {
-  --background: 20 20% 6%;
-  --foreground: 30 15% 85%;
-  --border: 25 15% 15%;
-  --input: 25 15% 15%;
-  --ring: 30 70% 45%;
-  --card: 20 15% 9%;
-  --card-foreground: 30 15% 85%;
-  --card-border: 25 15% 15%;
-  --popover: 20 15% 9%;
-  --popover-foreground: 30 15% 85%;
-  --popover-border: 25 15% 15%;
-  --primary: 30 70% 45%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 25 15% 15%;
-  --secondary-foreground: 30 15% 85%;
-  --muted: 25 15% 12%;
-  --muted-foreground: 30 15% 60%;
-  --accent: 25 15% 15%;
-  --accent-foreground: 30 15% 85%;
+  --background: 0 0% 4%;
+  --foreground: 40 10% 90%;
+  --border: 0 0% 15%;
+  --input: 0 0% 12%;
+  --ring: 5 70% 35%;
+  --card: 0 0% 6%;
+  --card-foreground: 40 10% 85%;
+  --card-border: 0 0% 15%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 40 10% 85%;
+  --popover-border: 0 0% 15%;
+  --primary: 5 70% 35%;
+  --primary-foreground: 40 10% 95%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 40 10% 80%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 40 10% 60%;
+  --accent: 0 0% 10%;
+  --accent-foreground: 40 10% 80%;
   --destructive: 0 60% 50%;
   --destructive-foreground: 0 0% 100%;
 }
@@ -121,5 +121,19 @@
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-serif tracking-tight text-foreground;
+  }
+  
+  /* Noise overlay */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
   }
 }

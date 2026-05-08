@@ -2,58 +2,64 @@ import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
-import { Quote, Headphones } from "lucide-react";
+import { Headphones } from "lucide-react";
 
 export function RegretCard({ regret }: { regret: Regret }) {
   return (
     <Card 
-      className="p-6 bg-card/50 border-border/50 hover:border-primary/30 transition-all duration-300 group flex flex-col h-full hover-elevate shadow-sm hover:shadow-md"
+      className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none"
       data-testid={`regret-card-${regret.id}`}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 capitalize font-medium">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] uppercase tracking-widest font-bold text-primary">
             {regret.topic_tag}
-          </Badge>
-          <Badge variant="secondary" className="capitalize text-muted-foreground bg-secondary/50">
+          </span>
+          <span className="w-1 h-1 bg-border rounded-full" />
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
             {regret.stage} Stage
-          </Badge>
+          </span>
         </div>
-        <span className="text-xs text-muted-foreground font-mono">
-          {regret.episode_date ? new Date(regret.episode_date).getFullYear() : 'Unknown'}
+        <span className="text-[10px] text-muted-foreground font-mono">
+          {regret.episode_date ? new Date(regret.episode_date).getFullYear() : 'Date Unknown'}
         </span>
       </div>
 
-      <h3 className="font-serif text-xl md:text-2xl font-bold leading-tight mb-4 text-foreground group-hover:text-primary transition-colors">
-        {regret.regret_statement}
-      </h3>
+      <div className="flex-1 flex flex-col">
+        <h3 className="font-serif text-2xl md:text-3xl font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500">
+          {regret.regret_statement}
+        </h3>
 
-      <div className="relative pl-4 border-l-2 border-primary/20 mb-6 flex-1">
-        <Quote className="absolute -left-2 -top-2 w-4 h-4 text-primary/40 rotate-180 bg-card" />
-        <p className="text-sm md:text-base text-muted-foreground italic leading-relaxed line-clamp-4">
-          "{regret.source_quote}"
-        </p>
+        <div className="pl-6 border-l border-primary/30 mb-8 mt-auto relative">
+          <p className="text-lg md:text-xl font-serif text-muted-foreground italic leading-relaxed">
+            "{regret.source_quote}"
+          </p>
+        </div>
       </div>
 
-      <div className="mt-auto pt-4 border-t border-border/30 flex items-center justify-between gap-4">
+      <div className="pt-6 border-t border-border/40 flex items-center justify-between gap-4 mt-auto">
         <div>
-          <p className="font-semibold text-sm text-foreground">{regret.guest_name}</p>
-          <p className="text-xs text-muted-foreground line-clamp-1">{regret.company || "PM Leader"}</p>
+          <p className="font-sans font-bold text-sm text-foreground uppercase tracking-wide">
+            {regret.guest_name}
+          </p>
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mt-1">
+            {regret.company || "PM Leader"}
+          </p>
         </div>
         {regret.episode_url ? (
           <a 
             href={regret.episode_url} 
             target="_blank" 
             rel="noreferrer"
-            className="flex-shrink-0 flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            className="flex-shrink-0 w-10 h-10 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary transition-colors"
             data-testid={`link-episode-${regret.id}`}
+            title="Listen to Episode"
           >
-            <Headphones className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Listen</span>
+            <Headphones className="w-4 h-4" />
           </a>
         ) : (
-          <div className="flex-shrink-0 flex items-center gap-1.5 text-xs text-muted-foreground" title={regret.episode_title}>
-            <Headphones className="w-3.5 h-3.5" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-full border border-border/30 flex items-center justify-center text-muted-foreground/30" title={regret.episode_title}>
+            <Headphones className="w-4 h-4" />
           </div>
         )}
       </div>
