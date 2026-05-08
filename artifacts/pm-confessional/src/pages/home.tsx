@@ -50,6 +50,9 @@ export function Home() {
   const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
+  // Page size for the archive grid. Grows in 50-card increments via "Load more"
+  // so the entire archive is reachable without overwhelming the initial render.
+  const [listLimit, setListLimit] = useState(50);
 
   const searchMutation = useSearchRegrets();
 
@@ -73,7 +76,7 @@ export function Home() {
     stage: selectedStage,
     guest_name: selectedGuest,
     year: selectedYear ? parseInt(selectedYear, 10) : undefined,
-    limit: 50,
+    limit: listLimit,
   };
   const { data: listData, isLoading: isLoadingList } = useListRegrets(
     listParams,
@@ -111,7 +114,16 @@ export function Home() {
     setSelectedStage(undefined);
     setSelectedGuest(undefined);
     setSelectedYear(undefined);
+    setListLimit(50);
   };
+
+  // Reset the page size whenever filters/search change, so a narrowed result
+  // set doesn't carry an inflated limit from a previous "Load more" click.
+  // (The query refetches automatically because listLimit is in the queryKey.)
+  const canLoadMore =
+    !hasSearched &&
+    listData != null &&
+    listData.regrets.length < listData.total;
 
   const activeFilterChips: { label: string; onRemove: () => void }[] = [];
   if (selectedTopic) {
@@ -530,11 +542,26 @@ export function Home() {
               ) : null}
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {regretsToShow?.map((regret) => (
-                <RegretCard key={regret.id} regret={regret} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {regretsToShow?.map((regret) => (
+                  <RegretCard key={regret.id} regret={regret} />
+                ))}
+              </div>
+              {canLoadMore ? (
+                <div className="flex justify-center mt-12">
+                  <button
+                    onClick={() => setListLimit((n) => n + 50)}
+                    disabled={isLoadingList}
+                    className="text-xs uppercase tracking-widest font-bold text-primary hover:text-foreground transition-colors border-b border-primary pb-1 disabled:opacity-50"
+                  >
+                    {isLoadingList
+                      ? "Loading…"
+                      : `Load more (${(listData?.total ?? 0) - (listData?.regrets.length ?? 0)} remaining)`}
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </section>
