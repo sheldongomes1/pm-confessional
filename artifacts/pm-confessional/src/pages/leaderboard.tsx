@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useGetLeaderboard, getGetLeaderboardQueryKey } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trophy, Medal, Star } from "lucide-react";
+import { GuestConfessionsDialog } from "@/components/guest-confessions-dialog";
 
 export function Leaderboard() {
   const { data, isLoading } = useGetLeaderboard({
     query: { queryKey: getGetLeaderboardQueryKey() }
   });
+  const [selectedGuest, setSelectedGuest] = useState<string | null>(null);
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
@@ -45,10 +48,11 @@ export function Leaderboard() {
             return (
               <Card 
                 key={entry.guest_name} 
-                className={`p-6 border-border/50 transition-all ${
+                onClick={() => setSelectedGuest(entry.guest_name)}
+                className={`p-6 border-border/50 transition-all cursor-pointer ${
                   isFirst 
-                    ? "bg-gradient-to-r from-primary/10 to-card border-primary/30 shadow-[0_0_30px_-15px_hsl(var(--primary))]" 
-                    : "bg-card/50 hover:bg-card/80"
+                    ? "bg-gradient-to-r from-primary/10 to-card border-primary/30 shadow-[0_0_30px_-15px_hsl(var(--primary))] hover:border-primary/50" 
+                    : "bg-card/50 hover:bg-card/80 hover:border-primary/30"
                 }`}
                 data-testid={`leaderboard-row-${index}`}
               >
@@ -106,6 +110,12 @@ export function Leaderboard() {
           })
         )}
       </div>
+
+      <GuestConfessionsDialog
+        guestName={selectedGuest}
+        open={!!selectedGuest}
+        onOpenChange={(open) => !open && setSelectedGuest(null)}
+      />
     </div>
   );
 }

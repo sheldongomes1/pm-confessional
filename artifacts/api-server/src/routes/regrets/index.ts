@@ -30,11 +30,12 @@ router.get("/regrets", async (req, res): Promise<void> => {
     return;
   }
 
-  const { topic_tag, stage, limit, offset } = parsed.data;
+  const { topic_tag, stage, guest_name, limit, offset } = parsed.data;
 
   const conditions = [];
   if (topic_tag) conditions.push(eq(regretsTable.topic_tag, topic_tag));
   if (stage) conditions.push(eq(regretsTable.stage, stage));
+  if (guest_name) conditions.push(eq(regretsTable.guest_name, guest_name));
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

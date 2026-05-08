@@ -45,6 +45,10 @@ paths:
           in: query
           schema:
             type: string
+        - name: guest_name
+          in: query
+          schema:
+            type: string
         - name: limit
           in: query
           schema:

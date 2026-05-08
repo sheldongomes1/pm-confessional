@@ -129,6 +129,7 @@ export interface StartIngestBody {
 export type ListRegretsParams = {
   topic_tag?: string;
   stage?: string;
+  guest_name?: string;
   limit?: number;
   offset?: number;
 };

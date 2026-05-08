@@ -24,6 +24,7 @@ export const listRegretsQueryOffsetDefault = 0;
 export const ListRegretsQueryParams = zod.object({
   topic_tag: zod.coerce.string().optional(),
   stage: zod.coerce.string().optional(),
+  guest_name: zod.coerce.string().optional(),
   limit: zod.coerce.number().default(listRegretsQueryLimitDefault),
   offset: zod.coerce.number().default(listRegretsQueryOffsetDefault),
 });
