@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { keepPreviousData } from "@tanstack/react-query";
 import {
@@ -117,9 +117,14 @@ export function Home() {
     setListLimit(50);
   };
 
-  // Reset the page size whenever filters/search change, so a narrowed result
-  // set doesn't carry an inflated limit from a previous "Load more" click.
-  // (The query refetches automatically because listLimit is in the queryKey.)
+  // Reset the page size whenever filter state changes, so a narrowed result
+  // set doesn't carry an inflated limit from a previous "Load more" click
+  // (e.g. user loaded 300 then picked a topic — refetching 300 of the
+  // narrower set wastes bandwidth and feels slow).
+  useEffect(() => {
+    setListLimit(50);
+  }, [selectedTopic, selectedStage, selectedGuest, selectedYear]);
+
   const canLoadMore =
     !hasSearched &&
     listData != null &&
