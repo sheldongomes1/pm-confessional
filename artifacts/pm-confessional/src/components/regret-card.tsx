@@ -1,12 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
 
-interface RegretCardProps {
-  regret: Regret;
-  isLead?: boolean;
-}
-
-export function RegretCard({ regret, isLead = false }: RegretCardProps) {
+export function RegretCard({ regret }: { regret: Regret }) {
   // Strip any quote characters the model may have included so the hanging
   // glyph isn't rendered twice.
   const cleanQuote = regret.source_quote
@@ -37,13 +32,7 @@ export function RegretCard({ regret, isLead = false }: RegretCardProps) {
       </div>
 
       <div className="flex-1 flex flex-col">
-        <h3
-          className={`font-serif font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500 ${
-            isLead
-              ? "text-3xl md:text-4xl first-letter:font-serif first-letter:text-7xl md:first-letter:text-8xl first-letter:float-left first-letter:leading-[0.85] first-letter:mr-3 first-letter:mt-1 first-letter:text-primary"
-              : "text-2xl md:text-3xl"
-          }`}
-        >
+        <h3 className="font-serif text-2xl md:text-3xl font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500">
           {regret.regret_statement}
         </h3>
 

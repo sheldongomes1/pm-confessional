@@ -438,12 +438,8 @@ export function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {regretsToShow?.map((regret, index) => (
-                <RegretCard
-                  key={regret.id}
-                  regret={regret}
-                  isLead={index === 0}
-                />
+              {regretsToShow?.map((regret) => (
+                <RegretCard key={regret.id} regret={regret} />
               ))}
             </div>
           )}
