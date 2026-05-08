@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, desc, and, asc } from "drizzle-orm";
+import { eq, sql, desc, and, asc, isNull } from "drizzle-orm";
 import { db, regretsTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
@@ -33,7 +33,9 @@ router.get("/regrets", async (req, res): Promise<void> => {
 
   const { topic_tag, stage, guest_name, year, limit, offset } = parsed.data;
 
-  const conditions = [];
+  // Hide rows the audit flagged as non-confessions (HEADLINE_MISMATCH,
+  // AMBIGUOUS, etc.). They stay in the DB for review but never reach the UI.
+  const conditions = [isNull(regretsTable.audit_verdict)];
   if (topic_tag) conditions.push(eq(regretsTable.topic_tag, topic_tag));
   if (stage) conditions.push(eq(regretsTable.stage, stage));
   if (guest_name) conditions.push(eq(regretsTable.guest_name, guest_name));
@@ -43,7 +45,7 @@ router.get("/regrets", async (req, res): Promise<void> => {
     );
   }
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const whereClause = and(...conditions);
 
   const [regrets, countResult] = await Promise.all([
     db
@@ -142,10 +144,12 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   const { query, limit } = parsed.data;
   const k = limit ?? 8;
 
-  // Fetch all regrets — at MVP scale (10s-100s) we rank everything in one pass
+  // Fetch all regrets — at MVP scale (10s-100s) we rank everything in one pass.
+  // Exclude audit-flagged rows so they never appear in search results.
   const all = await db
     .select()
     .from(regretsTable)
+    .where(isNull(regretsTable.audit_verdict))
     .orderBy(desc(regretsTable.created_at))
     .limit(200);
 
@@ -222,6 +226,7 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
 router.get("/regrets/categories", async (_req, res): Promise<void> => {
   const validDateClause = sql`${regretsTable.episode_date} ~ '^[0-9]{4}'`;
   const yearExpr = sql<number>`cast(substring(${regretsTable.episode_date} from '^[0-9]{4}') as integer)`;
+  const notFlagged = isNull(regretsTable.audit_verdict);
 
   const [byTopic, byStage, byYear] = await Promise.all([
     db
@@ -230,6 +235,7 @@ router.get("/regrets/categories", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
+      .where(notFlagged)
       .groupBy(regretsTable.topic_tag)
       .orderBy(desc(sql`count(*)`)),
     db
@@ -238,6 +244,7 @@ router.get("/regrets/categories", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
+      .where(notFlagged)
       .groupBy(regretsTable.stage)
       .orderBy(desc(sql`count(*)`)),
     db
@@ -246,7 +253,7 @@ router.get("/regrets/categories", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
-      .where(validDateClause)
+      .where(and(validDateClause, notFlagged))
       .groupBy(yearExpr)
       .orderBy(desc(yearExpr)),
   ]);
@@ -272,6 +279,7 @@ router.get("/regrets/stats", async (_req, res): Promise<void> => {
   // Only treat dates that begin with 4 digits as parseable; cast safely.
   const validDateClause = sql`${regretsTable.episode_date} ~ '^[0-9]{4}'`;
   const yearExpr = sql<number>`cast(substring(${regretsTable.episode_date} from '^[0-9]{4}') as integer)`;
+  const notFlagged = isNull(regretsTable.audit_verdict);
 
   const [
     [totals],
@@ -286,13 +294,15 @@ router.get("/regrets/stats", async (_req, res): Promise<void> => {
         total_guests: sql<number>`count(distinct ${regretsTable.guest_name})`,
         total_episodes: sql<number>`count(distinct ${regretsTable.episode_title})`,
       })
-      .from(regretsTable),
+      .from(regretsTable)
+      .where(notFlagged),
     db
       .select({
         label: regretsTable.topic_tag,
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
+      .where(notFlagged)
       .groupBy(regretsTable.topic_tag)
       .orderBy(desc(sql`count(*)`), asc(regretsTable.topic_tag)),
     db
@@ -301,6 +311,7 @@ router.get("/regrets/stats", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
+      .where(notFlagged)
       .groupBy(regretsTable.stage)
       .orderBy(desc(sql`count(*)`), asc(regretsTable.stage)),
     db
@@ -310,7 +321,7 @@ router.get("/regrets/stats", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
-      .where(validDateClause)
+      .where(and(validDateClause, notFlagged))
       .groupBy(yearExpr, regretsTable.topic_tag),
     db
       .select({
@@ -318,7 +329,7 @@ router.get("/regrets/stats", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)`,
       })
       .from(regretsTable)
-      .where(validDateClause)
+      .where(and(validDateClause, notFlagged))
       .groupBy(yearExpr)
       .orderBy(desc(sql`count(*)`), desc(yearExpr)),
   ]);
@@ -394,7 +405,7 @@ router.get("/regrets/:id", async (req, res): Promise<void> => {
   const [regret] = await db
     .select()
     .from(regretsTable)
-    .where(eq(regretsTable.id, params.data.id));
+    .where(and(eq(regretsTable.id, params.data.id), isNull(regretsTable.audit_verdict)));
 
   if (!regret) {
     res.status(404).json({ error: "Regret not found" });
@@ -405,6 +416,7 @@ router.get("/regrets/:id", async (req, res): Promise<void> => {
 });
 
 router.get("/leaderboard", async (_req, res): Promise<void> => {
+  const notFlagged = isNull(regretsTable.audit_verdict);
   const entries = await db
     .select({
       guest_name: regretsTable.guest_name,
@@ -412,6 +424,7 @@ router.get("/leaderboard", async (_req, res): Promise<void> => {
       episode_count: sql<number>`count(distinct ${regretsTable.episode_title})`,
     })
     .from(regretsTable)
+    .where(notFlagged)
     .groupBy(regretsTable.guest_name)
     .orderBy(desc(sql`count(*)`))
     .limit(20);
@@ -425,7 +438,7 @@ router.get("/leaderboard", async (_req, res): Promise<void> => {
           cnt: sql<number>`count(*)`,
         })
         .from(regretsTable)
-        .where(eq(regretsTable.guest_name, entry.guest_name))
+        .where(and(eq(regretsTable.guest_name, entry.guest_name), notFlagged))
         .groupBy(regretsTable.topic_tag)
         .orderBy(desc(sql`count(*)`))
         .limit(3);

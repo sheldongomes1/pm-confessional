@@ -43,6 +43,13 @@ export const regretsTable = pgTable("regrets", {
   episode_url: text("episode_url"),
   episode_id: integer("episode_id").references(() => episodesTable.id),
   embedding: text("embedding"),
+  // Set by the audit script (`scripts/src/audit-regrets-deep.ts`) to the verdict
+  // string for any non-PERSONAL_CONFESSION row (HEADLINE_MISMATCH, AMBIGUOUS,
+  // GENERAL_ADVICE, THIRD_PARTY, LENNY_NOT_GUEST). NULL means the regret passed
+  // audit (or was never audited). All public-facing queries filter to
+  // `audit_verdict IS NULL` so flagged rows are hidden from the UI but
+  // preserved in the DB for later review.
+  audit_verdict: text("audit_verdict"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
