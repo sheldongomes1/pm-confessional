@@ -1,8 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "pg";
+import { writeFileSync } from "node:fs";
 
 const SAMPLE_SIZE = Number(process.env.AUDIT_SAMPLE_SIZE ?? 12);
+const CONCURRENCY = Number(process.env.AUDIT_CONCURRENCY ?? 8);
 const MCP_ENDPOINT = "https://mcp.lennysdata.com/mcp";
+const REPORT_PATH = process.env.AUDIT_REPORT_PATH ?? "audit-report.json";
 
 interface Row {
   id: string;
@@ -11,6 +14,7 @@ interface Row {
   source_quote: string;
   headline_evidence: string | null;
   filename: string;
+  episode_id: number;
 }
 
 function parseSSE(body: string): unknown {
@@ -84,29 +88,58 @@ async function main() {
   const pg = new Client({ connectionString: process.env.DATABASE_URL });
   await pg.connect();
   const { rows } = await pg.query<Row>(
-    `SELECT r.id::text AS id, r.guest_name, r.regret_statement, r.source_quote, r.headline_evidence, e.filename
+    `SELECT r.id::text AS id, r.guest_name, r.regret_statement, r.source_quote, r.headline_evidence, e.filename, e.id AS episode_id
      FROM regrets r JOIN episodes e ON e.id = r.episode_id
      WHERE r.source_quote IS NOT NULL AND length(r.source_quote) > 80
      ORDER BY RANDOM() LIMIT $1`,
     [SAMPLE_SIZE]
   );
-  await pg.end();
-  console.log(`Sampled ${rows.length} regrets. Fetching full episode contexts...`);
+  console.log(`Sampled ${rows.length} regrets. Loading episode contexts...`);
 
-  // Fetch markdowns (cache per filename so multiple regrets from same episode share one fetch)
+  // Pull cached markdown from the DB first — saves a re-fetch from MCP.
+  const filenames = Array.from(new Set(rows.map((r) => r.filename)));
   const cache = new Map<string, string>();
-  for (const r of rows) {
-    if (!cache.has(r.filename)) {
-      try {
-        cache.set(r.filename, await fetchEpisodeMarkdown(token, r.filename));
-        process.stdout.write("·");
-      } catch (e) {
-        cache.set(r.filename, "");
-        process.stdout.write("x");
-      }
+  if (filenames.length) {
+    const { rows: cachedMd } = await pg.query<{ filename: string; markdown: string | null }>(
+      `SELECT filename, markdown FROM episodes WHERE filename = ANY($1::text[])`,
+      [filenames]
+    );
+    for (const row of cachedMd) {
+      if (row.markdown) cache.set(row.filename, row.markdown);
     }
   }
-  console.log("\n");
+  console.log(
+    `  ${cache.size}/${filenames.length} episodes available from DB cache.`
+  );
+
+  // Backfill the rest from MCP, in parallel (small concurrency to be polite).
+  const missing = filenames.filter((f) => !cache.has(f));
+  if (missing.length) {
+    console.log(`  Fetching ${missing.length} from MCP...`);
+    const FETCH_CONC = 4;
+    for (let i = 0; i < missing.length; i += FETCH_CONC) {
+      const batch = missing.slice(i, i + FETCH_CONC);
+      await Promise.all(
+        batch.map(async (filename) => {
+          try {
+            const md = await fetchEpisodeMarkdown(token, filename);
+            cache.set(filename, md);
+            // Write back to the DB cache so future audits/re-extractions reuse it.
+            await pg.query(
+              `UPDATE episodes SET markdown = $1 WHERE filename = $2 AND markdown IS NULL`,
+              [md, filename]
+            );
+            process.stdout.write("·");
+          } catch {
+            cache.set(filename, "");
+            process.stdout.write("x");
+          }
+        })
+      );
+    }
+    console.log("\n");
+  }
+  await pg.end();
 
   const client = new Anthropic({
     baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
@@ -116,8 +149,8 @@ async function main() {
   type AuditResult = Row & { verdict: string; reason: string };
   const results: AuditResult[] = [];
 
-  for (let i = 0; i < rows.length; i += 4) {
-    const batch = rows.slice(i, i + 4);
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    const batch = rows.slice(i, i + CONCURRENCY);
     const out = await Promise.all(
       batch.map(async (r): Promise<AuditResult> => {
         try {
@@ -176,6 +209,32 @@ async function main() {
     console.log(`  [${r.guest_name}] "${r.regret_statement}"`);
     console.log(`    why: ${r.reason}`);
   }
+
+  // Write the full per-row report so flagged entries can be inspected later
+  // and (optionally) deleted from the DB.
+  writeFileSync(
+    REPORT_PATH,
+    JSON.stringify(
+      {
+        generated_at: new Date().toISOString(),
+        sample_size: results.length,
+        counts,
+        results: results.map((r) => ({
+          regret_id: r.id,
+          episode_id: r.episode_id,
+          filename: r.filename,
+          guest_name: r.guest_name,
+          headline: r.regret_statement,
+          headline_evidence: r.headline_evidence,
+          verdict: r.verdict,
+          reason: r.reason,
+        })),
+      },
+      null,
+      2
+    )
+  );
+  console.log(`\nFull per-row report written to ${REPORT_PATH}`);
 }
 
 main().catch((err) => {
