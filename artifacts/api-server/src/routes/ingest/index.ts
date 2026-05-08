@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db, ingestStatusTable, regretsTable } from "@workspace/db";
 import { StartIngestBody, GetIngestStatusResponse } from "@workspace/api-zod";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { batchProcess } from "@workspace/integrations-anthropic-ai/batch";
 import { desc } from "drizzle-orm";
 import { logger } from "../../lib/logger";
+import { extractRegretFromPassage } from "../../lib/regret-extractor";
 
 const router: IRouter = Router();
 
@@ -289,73 +289,6 @@ function getSampleEpisodes(): EpisodeChunk[] {
   ];
 }
 
-const REGRET_EXTRACTION_PROMPT = `You are analyzing podcast transcript segments for a tool called "The PM Confessional". 
-Your task is to identify moments where the speaker (a product manager, founder, or executive) expresses:
-- Regret about a decision they made
-- A mistake they admitted to
-- What they would do differently in hindsight
-- A warning to others based on their own experience
-
-If this passage contains such a moment, extract it as a SHORT magazine-style HEADLINE that distills the lesson.
-If it does NOT contain a regret/mistake/lesson from experience, return exactly: null
-
-Guidelines for the headline:
-- 6 to 12 words MAXIMUM. Aim for 8.
-- Should read like a confession or a piece of hard-won wisdom — punchy, declarative, with a point of view.
-- Do NOT restate the quote. Distill the LESSON behind it.
-- Prefer first person ("I shipped before…", "I hired the wrong…") OR imperative ("Don't ship before customers see it", "Hire for slope, not intercept").
-- No hedging, no filler. No quotes around the headline.
-- Strong examples:
-  • "I confused velocity with progress."
-  • "We monetized two years too late."
-  • "Hire for slope, not for pedigree."
-  • "Don't ship until five customers can finish onboarding."
-- Weak examples (DO NOT do this — they just paraphrase the quote):
-  • "I didn't test onboarding early enough — we spent 4 months building before discovering users couldn't figure out the product…"
-  • "I should have thought about the cold start problem sooner because we launched with no supply…"
-
-Passage to analyze:
-`;
-
-interface RegretResult {
-  regret_statement: string | null;
-  topic_tag: string;
-  stage: string;
-}
-
-async function extractRegretFromChunk(chunk: EpisodeChunk): Promise<RegretResult | null> {
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 8192,
-    messages: [
-      {
-        role: "user",
-        content: `${REGRET_EXTRACTION_PROMPT}${chunk.text}
-
-Respond in JSON format:
-{
-  "regret_statement": "6-12 word headline distilling the lesson, or null if not applicable",
-  "topic_tag": "one of: hiring|pricing|product|growth|culture|fundraising|timing|customers|other",
-  "stage": "one of: early|growth|scale|unknown (infer from context)"
-}`,
-      },
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== "text") return null;
-
-  try {
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const result = JSON.parse(jsonMatch[0]) as RegretResult;
-    if (!result.regret_statement || result.regret_statement === "null") return null;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
 async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
   try {
     logger.info({ sampleOnly, limitEpisodes }, "Starting ingestion");
@@ -373,7 +306,7 @@ async function runIngestion(sampleOnly: boolean, limitEpisodes: number | null) {
     const results = await batchProcess(
       chunks,
       async (chunk, index) => {
-        const result = await extractRegretFromChunk(chunk);
+        const result = await extractRegretFromPassage(chunk.text);
         
         if (!episodesSeen.has(chunk.episode_title)) {
           episodesSeen.add(chunk.episode_title);
