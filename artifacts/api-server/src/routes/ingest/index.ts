@@ -296,14 +296,23 @@ Your task is to identify moments where the speaker (a product manager, founder, 
 - What they would do differently in hindsight
 - A warning to others based on their own experience
 
-If this passage contains such a moment, extract it as a clean, direct 1-2 sentence regret statement in first person.
+If this passage contains such a moment, extract it as a SHORT magazine-style HEADLINE that distills the lesson.
 If it does NOT contain a regret/mistake/lesson from experience, return exactly: null
 
-Guidelines:
-- The statement should be direct and actionable (e.g. "I waited too long to monetize - charging earlier would have given us honest signal")
-- Remove filler words, keep the core insight
-- Use first person as if the speaker is saying it
-- Must be a real mistake/regret, not just general advice
+Guidelines for the headline:
+- 6 to 12 words MAXIMUM. Aim for 8.
+- Should read like a confession or a piece of hard-won wisdom — punchy, declarative, with a point of view.
+- Do NOT restate the quote. Distill the LESSON behind it.
+- Prefer first person ("I shipped before…", "I hired the wrong…") OR imperative ("Don't ship before customers see it", "Hire for slope, not intercept").
+- No hedging, no filler. No quotes around the headline.
+- Strong examples:
+  • "I confused velocity with progress."
+  • "We monetized two years too late."
+  • "Hire for slope, not for pedigree."
+  • "Don't ship until five customers can finish onboarding."
+- Weak examples (DO NOT do this — they just paraphrase the quote):
+  • "I didn't test onboarding early enough — we spent 4 months building before discovering users couldn't figure out the product…"
+  • "I should have thought about the cold start problem sooner because we launched with no supply…"
 
 Passage to analyze:
 `;
@@ -325,7 +334,7 @@ async function extractRegretFromChunk(chunk: EpisodeChunk): Promise<RegretResult
 
 Respond in JSON format:
 {
-  "regret_statement": "1-2 sentence direct regret statement, or null if not applicable",
+  "regret_statement": "6-12 word headline distilling the lesson, or null if not applicable",
   "topic_tag": "one of: hiring|pricing|product|growth|culture|fundraising|timing|customers|other",
   "stage": "one of: early|growth|scale|unknown (infer from context)"
 }`,
