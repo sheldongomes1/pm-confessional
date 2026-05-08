@@ -1,9 +1,21 @@
 import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
 
-export function RegretCard({ regret }: { regret: Regret }) {
+interface RegretCardProps {
+  regret: Regret;
+  isLead?: boolean;
+}
+
+export function RegretCard({ regret, isLead = false }: RegretCardProps) {
+  // Strip any quote characters the model may have included so the hanging
+  // glyph isn't rendered twice.
+  const cleanQuote = regret.source_quote
+    .trim()
+    .replace(/^["“”'`]+/, "")
+    .replace(/["“”'`]+$/, "");
+
   return (
-    <Card 
+    <Card
       className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none"
       data-testid={`regret-card-${regret.id}`}
     >
@@ -18,20 +30,34 @@ export function RegretCard({ regret }: { regret: Regret }) {
           </span>
         </div>
         <span className="text-[10px] text-muted-foreground font-mono">
-          {regret.episode_date ? new Date(regret.episode_date).getFullYear() : 'Date Unknown'}
+          {regret.episode_date
+            ? new Date(regret.episode_date).getFullYear()
+            : "Date Unknown"}
         </span>
       </div>
 
       <div className="flex-1 flex flex-col">
-        <h3 className="font-serif text-2xl md:text-3xl font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500">
+        <h3
+          className={`font-serif font-normal leading-tight mb-8 text-foreground group-hover:text-primary transition-colors duration-500 ${
+            isLead
+              ? "text-3xl md:text-4xl first-letter:font-serif first-letter:text-7xl md:first-letter:text-8xl first-letter:float-left first-letter:leading-[0.85] first-letter:mr-3 first-letter:mt-1 first-letter:text-primary"
+              : "text-2xl md:text-3xl"
+          }`}
+        >
           {regret.regret_statement}
         </h3>
 
-        <div className="pl-6 border-l border-primary/30 mb-8 mt-auto relative">
+        <blockquote className="relative pl-6 border-l border-primary/30 mb-8 mt-auto">
+          <span
+            aria-hidden="true"
+            className="absolute -left-1 -top-4 font-serif text-6xl text-primary/30 leading-none select-none"
+          >
+            “
+          </span>
           <p className="text-lg md:text-xl font-serif text-muted-foreground italic leading-relaxed">
-            "{regret.source_quote}"
+            {cleanQuote}
           </p>
-        </div>
+        </blockquote>
       </div>
 
       <div className="pt-6 border-t border-border/40 mt-auto">

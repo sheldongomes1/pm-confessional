@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GuestConfessionsDialog } from "@/components/guest-confessions-dialog";
+import { CountUp } from "@/components/count-up";
 
 export function Leaderboard() {
   const { data, isLoading } = useGetLeaderboard({
@@ -56,21 +57,15 @@ export function Leaderboard() {
           </div>
         ) : stats ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border border border-border">
+            <StatTile value={stats.total_regrets} label="Confessions" />
+            <StatTile value={stats.total_guests} label="Operators" />
+            <StatTile value={stats.total_episodes} label="Episodes" />
             <StatTile
-              value={stats.total_regrets.toString()}
-              label="Confessions"
-            />
-            <StatTile
-              value={stats.total_guests.toString()}
-              label="Operators"
-            />
-            <StatTile
-              value={stats.total_episodes.toString()}
-              label="Episodes"
-            />
-            <StatTile
-              value={stats.avg_regrets_per_guest.toString()}
+              value={stats.avg_regrets_per_guest}
               label="Avg per guest"
+              decimals={
+                Number.isInteger(stats.avg_regrets_per_guest) ? 0 : 1
+              }
             />
           </div>
         ) : null}
@@ -103,9 +98,10 @@ export function Leaderboard() {
                         </span>
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="font-serif text-3xl text-primary">
-                          {topic.count}
-                        </span>
+                        <CountUp
+                          value={topic.count}
+                          className="font-serif text-3xl text-primary"
+                        />
                         <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
                           entries
                         </span>
@@ -134,7 +130,8 @@ export function Leaderboard() {
                   {stats.most_candid_year.year}
                 </p>
                 <p className="text-sm font-serif italic text-muted-foreground mt-3">
-                  {stats.most_candid_year.count} confessions surfaced
+                  <CountUp value={stats.most_candid_year.count} />{" "}
+                  confessions surfaced
                 </p>
               </div>
             )}
@@ -349,12 +346,22 @@ export function Leaderboard() {
   );
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+function StatTile({
+  value,
+  label,
+  decimals = 0,
+}: {
+  value: number;
+  label: string;
+  decimals?: number;
+}) {
   return (
     <div className="bg-background p-8">
-      <p className="font-serif text-5xl text-foreground leading-none mb-3">
-        {value}
-      </p>
+      <CountUp
+        value={value}
+        decimals={decimals}
+        className="font-serif text-5xl text-foreground leading-none mb-3 block"
+      />
       <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
         {label}
       </p>
