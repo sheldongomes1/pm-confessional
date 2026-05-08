@@ -124,49 +124,6 @@ router.post("/ingest/start", async (req, res): Promise<void> => {
   });
 });
 
-async function fetchEpisodesFromMCP(
-  sampleOnly: boolean,
-  limitEpisodes: number | null
-): Promise<EpisodeChunk[]> {
-  try {
-    // Try to fetch from MCP
-    const limit = sampleOnly ? 10 : (limitEpisodes ?? 999);
-    const response = await fetch("https://mcp.lennysdata.com/mcp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "search_episodes",
-          arguments: {
-            query: "product management mistakes lessons learned",
-            limit: limit,
-          },
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`MCP returned ${response.status}`);
-    }
-
-    const data = await response.json() as MCPResponse;
-    
-    if (data.result?.content) {
-      const episodes = JSON.parse(data.result.content[0]?.text ?? "[]");
-      return chunkEpisodes(episodes, sampleOnly ? 10 : limit);
-    }
-    throw new Error("No content in MCP response");
-  } catch (err) {
-    logger.warn({ err }, "MCP fetch failed, using sample data");
-    return getSampleEpisodes();
-  }
-}
-
 interface EpisodeChunk {
   guest_name: string;
   episode_title: string;
@@ -175,43 +132,171 @@ interface EpisodeChunk {
   text: string;
 }
 
-interface MCPResponse {
-  result?: {
-    content?: Array<{ text?: string }>;
-  };
+const MCP_ENDPOINT = "https://mcp.lennysdata.com/mcp";
+
+// Regret-themed search queries. We hit the archive multiple times because
+// `search_content` returns relevance-ranked matches with `source_url` and
+// pre-extracted snippets — we don't need to chunk full transcripts ourselves.
+const REGRET_QUERIES = [
+  "mistake|wish I had|biggest regret",
+  "should have|would have done differently",
+  "lesson learned|hard way|in hindsight",
+  "if I could go back|did wrong|got wrong",
+];
+
+interface MCPSnippet {
+  text: string;
+  start_char?: number;
+  end_char?: number;
+}
+interface MCPSearchResult {
+  title: string;
+  filename: string;
+  type: string;
+  date?: string | null;
+  source_url?: string | null;
+  snippets?: MCPSnippet[];
+  snippet?: string;
 }
 
-function chunkEpisodes(episodes: Record<string, unknown>[], limit: number): EpisodeChunk[] {
-  const chunks: EpisodeChunk[] = [];
-  const MAX_CHUNK_TOKENS = 400;
-  const WORDS_PER_TOKEN = 0.75;
-  const MAX_WORDS = Math.floor(MAX_CHUNK_TOKENS / WORDS_PER_TOKEN);
-
-  for (const ep of episodes.slice(0, limit)) {
-    const transcript = (ep.transcript as string) || (ep.content as string) || "";
-    const guestName = (ep.guest as string) || (ep.guest_name as string) || "Unknown";
-    const episodeTitle = (ep.title as string) || (ep.episode_title as string) || "Unknown Episode";
-    const episodeDate = (ep.date as string) || (ep.published_at as string) || null;
-    const episodeUrl = (ep.url as string) || null;
-
-    if (!transcript) continue;
-
-    const words = transcript.split(/\s+/);
-    const overlapWords = Math.floor(MAX_WORDS * 0.1);
-
-    for (let i = 0; i < words.length; i += MAX_WORDS - overlapWords) {
-      const chunk = words.slice(i, i + MAX_WORDS).join(" ");
-      if (chunk.trim().length < 50) continue;
-      chunks.push({
-        guest_name: guestName,
-        episode_title: episodeTitle,
-        episode_date: episodeDate,
-        episode_url: episodeUrl,
-        text: chunk,
-      });
+/**
+ * Parse a Server-Sent Events response body and return the JSON payload from
+ * the first `data:` line. The MCP server replies with SSE framing even for
+ * single-shot tool calls.
+ */
+function parseSSE(body: string): unknown {
+  for (const line of body.split(/\r?\n/)) {
+    if (line.startsWith("data: ")) {
+      return JSON.parse(line.slice(6));
     }
   }
-  return chunks;
+  throw new Error("No data line in SSE response");
+}
+
+async function callMCP(
+  token: string,
+  method: string,
+  params: Record<string, unknown>
+): Promise<unknown> {
+  const res = await fetch(MCP_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!res.ok) {
+    throw new Error(`MCP HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+  }
+  const text = await res.text();
+  const parsed = parseSSE(text) as {
+    error?: { message?: string };
+    result?: { content?: Array<{ text?: string }> };
+  };
+  if (parsed.error) throw new Error(`MCP error: ${parsed.error.message}`);
+  const inner = parsed.result?.content?.[0]?.text;
+  if (typeof inner !== "string") throw new Error("MCP response missing content text");
+  return JSON.parse(inner);
+}
+
+/**
+ * Derive a guest name from a Lenny's Podcast episode title. Titles follow
+ * several patterns:
+ *   "<topic> | <Name>"                           — most common
+ *   "<topic> | <Name> (<company>)"               — common
+ *   "Behind the founder: <Name> (<company>)"     — recurring series
+ *   "<series>: ... with [author|guest] <Name>"   — collaborations
+ *   "<Name> on <topic>..."                       — older format
+ */
+function guestFromTitle(title: string): string {
+  const stripParen = (s: string) => s.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const looksLikeName = (s: string) =>
+    /^[A-Z][\p{L}'.-]+(?:\s+[A-Z][\p{L}'.-]+){1,3}$/u.test(s);
+
+  // 1. Pipe-delimited: "<topic> | <Name>"
+  if (title.includes("|")) {
+    const tail = title.split("|").pop()?.trim() ?? "";
+    const cleaned = stripParen(tail);
+    if (looksLikeName(cleaned)) return cleaned;
+  }
+
+  // 2. "with [author|guest|host] <Name>" anywhere in the title
+  const withMatch = title.match(/\bwith\s+(?:author\s+|guest\s+|host\s+)?([A-Z][\p{L}'.-]+(?:\s+[A-Z][\p{L}'.-]+){1,3})/u);
+  if (withMatch?.[1]) return withMatch[1];
+
+  // 3. Colon-delimited: "<series>: <Name> (<company>)"
+  if (title.includes(":")) {
+    const tail = title.split(":").pop()?.trim() ?? "";
+    const cleaned = stripParen(tail);
+    if (looksLikeName(cleaned)) return cleaned;
+  }
+
+  // 4. Leading name: "<Name> on <topic>..."
+  const leadMatch = title.match(/^([A-Z][\p{L}'.-]+(?:\s+[A-Z][\p{L}'.-]+){1,3})\s+on\s+/u);
+  if (leadMatch?.[1]) return leadMatch[1];
+
+  return "Unknown";
+}
+
+async function fetchEpisodesFromMCP(
+  sampleOnly: boolean,
+  limitEpisodes: number | null
+): Promise<EpisodeChunk[]> {
+  const token = process.env.LENNYS_DATA_MCP_TOKEN;
+  if (!token) {
+    logger.warn("LENNYS_DATA_MCP_TOKEN not set, using sample data");
+    return getSampleEpisodes();
+  }
+
+  try {
+    const perQuery = sampleOnly ? 5 : 20;
+    const allResults: MCPSearchResult[] = [];
+
+    for (const query of REGRET_QUERIES) {
+      const data = (await callMCP(token, "tools/call", {
+        name: "search_content",
+        arguments: { query, content_type: "podcast", limit: perQuery },
+      })) as { results?: MCPSearchResult[] };
+      if (Array.isArray(data.results)) allResults.push(...data.results);
+    }
+
+    // Dedupe snippets across queries: key by filename + snippet text prefix
+    const chunks: EpisodeChunk[] = [];
+    const seen = new Set<string>();
+    for (const ep of allResults) {
+      const snippets = ep.snippets ?? (ep.snippet ? [{ text: ep.snippet }] : []);
+      for (const sn of snippets) {
+        const key = `${ep.filename}|${sn.text.slice(0, 80)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        chunks.push({
+          guest_name: guestFromTitle(ep.title),
+          episode_title: ep.title,
+          episode_date: ep.date ?? null,
+          episode_url: ep.source_url ?? null,
+          // Strip leading/trailing ellipses the MCP adds around snippets.
+          text: sn.text.replace(/^\.{3}/, "").replace(/\.{3}$/, "").trim(),
+        });
+      }
+    }
+
+    if (chunks.length === 0) {
+      logger.warn("MCP returned no snippets, using sample data");
+      return getSampleEpisodes();
+    }
+
+    const cap = limitEpisodes ?? (sampleOnly ? 30 : chunks.length);
+    logger.info(
+      { chunks: chunks.length, capped: Math.min(cap, chunks.length) },
+      "MCP fetch succeeded"
+    );
+    return chunks.slice(0, cap);
+  } catch (err) {
+    logger.warn({ err }, "MCP fetch failed, using sample data");
+    return getSampleEpisodes();
+  }
 }
 
 function getSampleEpisodes(): EpisodeChunk[] {
