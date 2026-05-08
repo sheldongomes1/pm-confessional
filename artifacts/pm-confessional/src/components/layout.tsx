@@ -19,14 +19,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 rounded-sm bg-foreground text-background flex items-center justify-center shadow-sm">
               <BookOpen className="w-4 h-4" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-serif font-medium text-lg tracking-tight leading-none text-foreground">
-                Red Ink
-              </span>
-              <span className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">
-                The PM Confessional
-              </span>
-            </div>
+            <span
+              className="text-2xl leading-none text-foreground tracking-tight"
+              style={{ fontFamily: "var(--app-font-blackletter)" }}
+            >
+              The PM Confessional
+            </span>
           </Link>
           
           <nav className="flex items-center gap-6">

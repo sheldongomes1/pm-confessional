@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=UnifrakturMaguntia&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -54,6 +54,7 @@
   --app-font-sans: 'DM Sans', sans-serif;
   --app-font-serif: 'Newsreader', serif;
   --app-font-mono: Menlo, monospace;
+  --app-font-blackletter: 'UnifrakturMaguntia', 'Newsreader', serif;
   --radius: 0;
 
   /* Light, refined research tool aesthetic */
