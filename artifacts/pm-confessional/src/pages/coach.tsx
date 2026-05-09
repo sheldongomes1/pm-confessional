@@ -11,7 +11,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Loader2, Send, MessageSquare } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Loader2, Send, MessageSquare, ExternalLink } from "lucide-react";
 import { track } from "@/lib/analytics";
 
 /**
@@ -60,27 +66,116 @@ function CoachMessageBody({ text, knownIds }: { text: string; knownIds: Set<numb
 }
 
 function ConfessionSidebarCard({ regret }: { regret: Regret }) {
+  const [open, setOpen] = useState(false);
+  const evidence =
+    (regret.headline_evidence && regret.headline_evidence.trim().length > 5
+      ? regret.headline_evidence
+      : regret.source_quote) ?? "";
+  const episodeUrl =
+    typeof regret.episode_url === "string" &&
+    /^https?:\/\//i.test(regret.episode_url)
+      ? regret.episode_url
+      : null;
+
   return (
-    <Link
-      href={`/regret/${regret.id}`}
-      className="block border border-border hover:border-primary/60 transition-colors p-5 group"
-    >
-      <div className="flex items-center gap-3 mb-3">
-        <span className="text-[9px] uppercase tracking-widest font-bold text-primary">
-          #{regret.id}
-        </span>
-        <span className="w-1 h-1 bg-border rounded-full" />
-        <span className="text-[9px] uppercase tracking-widest text-muted-foreground">
-          {regret.topic_tag}
-        </span>
-      </div>
-      <p className="font-serif text-base leading-snug text-foreground group-hover:text-primary transition-colors mb-3">
-        {regret.regret_statement}
-      </p>
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {regret.guest_name}
-      </p>
-    </Link>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block w-full text-left border border-border hover:border-primary/60 transition-colors p-5 group"
+        data-testid={`confession-card-${regret.id}`}
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[9px] uppercase tracking-widest font-bold text-primary">
+            #{regret.id}
+          </span>
+          <span className="w-1 h-1 bg-border rounded-full" />
+          <span className="text-[9px] uppercase tracking-widest text-muted-foreground">
+            {regret.topic_tag}
+          </span>
+        </div>
+        <p className="font-serif text-base leading-snug text-foreground group-hover:text-primary transition-colors mb-3">
+          {regret.regret_statement}
+        </p>
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          {regret.guest_name}
+        </p>
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className="max-w-2xl max-h-[85vh] overflow-y-auto rounded-none border-border bg-background p-0"
+          data-testid={`confession-modal-${regret.id}`}
+        >
+          <DialogTitle className="sr-only">
+            {regret.regret_statement}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Confession #{regret.id} from {regret.guest_name}
+          </DialogDescription>
+
+          <div className="p-8 md:p-10">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary">
+                #{regret.id}
+              </span>
+              <span className="w-1 h-1 bg-border rounded-full" />
+              <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                {regret.topic_tag}
+              </span>
+              <span className="w-1 h-1 bg-border rounded-full" />
+              <span className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+                {regret.stage} stage
+              </span>
+            </div>
+
+            <h2 className="font-serif text-2xl md:text-3xl leading-snug text-foreground mb-6">
+              {regret.regret_statement}
+            </h2>
+
+            {evidence ? (
+              <blockquote className="border-l-2 border-primary/60 pl-5 my-6 font-serif italic text-base md:text-lg text-foreground/85 leading-relaxed">
+                "{evidence.replace(/^["“]|["”]$/g, "")}"
+              </blockquote>
+            ) : null}
+
+            <div className="mt-8 pt-6 border-t border-border space-y-2">
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                {regret.guest_name}
+                {regret.company ? ` · ${regret.company}` : ""}
+              </p>
+              {regret.episode_title ? (
+                <p className="font-serif text-sm text-foreground/80 italic">
+                  {regret.episode_title}
+                  {regret.episode_date ? ` · ${regret.episode_date}` : ""}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-8 flex items-center gap-3">
+              <Link
+                href={`/regret/${regret.id}`}
+                onClick={() => setOpen(false)}
+                className="text-[11px] uppercase tracking-widest font-bold text-primary border-b border-primary pb-1 hover:opacity-80"
+                data-testid={`confession-modal-detail-${regret.id}`}
+              >
+                Open full detail
+              </Link>
+              {episodeUrl ? (
+                <a
+                  href={episodeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-muted-foreground hover:text-foreground"
+                >
+                  Episode <ExternalLink className="w-3 h-3" />
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
