@@ -2,11 +2,16 @@ import { Router, type IRouter } from "express";
 import { eq, sql, desc, and, asc, isNull, inArray } from "drizzle-orm";
 import { db, regretsTable } from "@workspace/db";
 import {
-  embedText,
   toVectorLiteral,
   gemini,
-  FLASH_MODEL,
+  FLASH_LITE_MODEL,
 } from "@workspace/integrations-gemini-direct";
+import { embedQueryCached } from "./embedding-cache";
+
+// Configurable cosine cutoff for skipping the rerank LLM. If the top-1
+// candidate scores >= this similarity, we trust pure cosine and return
+// directly. Tunable per-deployment without a code change.
+const RERANK_THRESHOLD = Number(process.env.RERANK_THRESHOLD ?? "0.55");
 import {
   ListRegretsQueryParams,
   SearchRegretsBody,
@@ -87,8 +92,8 @@ type RankedItem = { id: number; score: number };
 async function rankWithGemini(
   query: string,
   candidates: (typeof regretsTable.$inferSelect)[],
-): Promise<Map<number, number> | null> {
-  if (candidates.length === 0) return new Map();
+): Promise<{ scores: Map<number, number>; tokens: number } | null> {
+  if (candidates.length === 0) return { scores: new Map(), tokens: 0 };
   const items = candidates
     .map(
       (r) =>
@@ -124,7 +129,9 @@ ${items}
 Score each candidate and respond with the JSON object as specified.`;
 
   const resp = await gemini.models.generateContent({
-    model: FLASH_MODEL,
+    // Flash Lite is meaningfully faster than Flash for this scoring task —
+    // a single batched call rates all 20 candidates at once.
+    model: FLASH_LITE_MODEL,
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     config: {
       systemInstruction: systemPrompt,
@@ -134,6 +141,7 @@ Score each candidate and respond with the JSON object as specified.`;
   });
 
   const text = resp.text;
+  const tokens = resp.usageMetadata?.totalTokenCount ?? 0;
   if (!text) return null;
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
@@ -145,7 +153,7 @@ Score each candidate and respond with the JSON object as specified.`;
       map.set(r.id, Math.max(0, Math.min(10, r.score)));
     }
   }
-  return map;
+  return { scores: map, tokens };
 }
 
 router.post("/regrets/search", async (req, res): Promise<void> => {
@@ -158,17 +166,51 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   const { query, limit } = parsed.data;
   const k = limit ?? 8;
 
+  // Per-request timing breakdown so we can see whether the bottleneck is
+  // the embedding call, pgvector, or the rerank LLM. Surfaced in stdout
+  // and via the X-Search-Timing response header (readable from devtools).
+  const t0 = process.hrtime.bigint();
+  const ms = (start: bigint) =>
+    Number((process.hrtime.bigint() - start) / 1_000_000n);
+  const timings = {
+    embed_ms: 0,
+    vector_ms: 0,
+    rerank_ms: 0,
+    total_ms: 0,
+    cache_hit: false,
+    rerank_tokens: 0,
+    top_cosine: 0,
+    mode: "vector_rerank" as
+      | "vector_rerank"
+      | "vector_only"
+      | "keyword"
+      | "empty",
+  };
+  const writeTimingHeader = () => {
+    timings.total_ms = ms(t0);
+    res.setHeader(
+      "X-Search-Timing",
+      `embed=${timings.embed_ms}ms;vector=${timings.vector_ms}ms;rerank=${timings.rerank_ms}ms;total=${timings.total_ms}ms;cache=${timings.cache_hit ? "hit" : "miss"};mode=${timings.mode};top_cos=${timings.top_cosine.toFixed(3)};tokens=${timings.rerank_tokens}`,
+    );
+  };
+
   // Step 1: embed the query (RETRIEVAL_QUERY task type, aligned with the
-  // RETRIEVAL_DOCUMENT vectors stored on each regret).
+  // RETRIEVAL_DOCUMENT vectors stored on each regret). Cached in-memory
+  // by sha256(normalized query) for 24h.
   let queryVec: number[] | null = null;
+  const tEmbed = process.hrtime.bigint();
   try {
-    queryVec = await embedText(query, "RETRIEVAL_QUERY");
+    const cached = await embedQueryCached(query, "RETRIEVAL_QUERY");
+    queryVec = cached.vec;
+    timings.cache_hit = cached.hit;
   } catch (err) {
     req.log.warn({ err }, "Gemini embed failed, falling back to keyword search");
   }
+  timings.embed_ms = ms(tEmbed);
 
   // Pure keyword fallback when embeddings are unavailable.
   if (!queryVec) {
+    timings.mode = "keyword";
     const lower = `%${query.toLowerCase().replace(/[%_]/g, "")}%`;
     const rows = await db
       .select()
@@ -180,6 +222,8 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
         ),
       )
       .limit(k);
+    writeTimingHeader();
+    req.log.info({ timings, query }, "search.timing");
     res.json(
       SearchRegretsResponse.parse({
         regrets: rows.map((r) => serializeRegret(r, null)),
@@ -195,6 +239,7 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   // Step 2: cosine top-k=20 in pgvector, excluding audit-flagged rows
   // and rows missing an embedding (defensive — backfill should have covered all).
   const literal = toVectorLiteral(queryVec);
+  const tVector = process.hrtime.bigint();
   const candidateRows = await db
     .select({
       regret: regretsTable,
@@ -211,8 +256,12 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
     )
     .orderBy(sql`${regretsTable.embedding} <=> ${literal}::vector`)
     .limit(20);
+  timings.vector_ms = ms(tVector);
 
   if (candidateRows.length === 0) {
+    timings.mode = "empty";
+    writeTimingHeader();
+    req.log.info({ timings, query }, "search.timing");
     res.json(
       SearchRegretsResponse.parse({
         regrets: [],
@@ -231,20 +280,58 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   }
   const candidates = candidateRows.map((c) => c.regret);
 
-  // Step 3: Gemini Flash rerank — returns 0-10 per candidate.
-  let rerank: Map<number, number> | null = null;
+  // Top-1 cosine — used to decide whether the rerank LLM is even worth it.
+  // candidates are ordered by distance, so candidates[0] is the top.
+  const topCosine = cosineSimById.get(candidates[0].id) ?? 0;
+  timings.top_cosine = topCosine;
+
+  // Cosine-only short-circuit: when the top match is already strong, the
+  // rerank LLM rarely changes the ranking — and it's the dominant cost.
+  // Tunable via RERANK_THRESHOLD env var (default 0.55).
+  if (topCosine >= RERANK_THRESHOLD) {
+    timings.mode = "vector_only";
+    const list = candidates
+      .map((r) => ({ regret: r, score: cosineSimById.get(r.id) ?? 0 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, k);
+    writeTimingHeader();
+    req.log.info(
+      { timings, query, reason: "cosine_above_threshold" },
+      "search.timing",
+    );
+    res.json(
+      SearchRegretsResponse.parse({
+        regrets: list.map((s) => serializeRegret(s.regret, s.score)),
+        query,
+        match_count: list.filter((s) => s.score >= 0.4).length,
+        is_fallback: false,
+        retrieval_mode: "vector_only",
+      }),
+    );
+    return;
+  }
+
+  // Step 3: Gemini Flash Lite rerank — returns 0-10 per candidate, in a
+  // single batched call that scores all 20 at once.
+  let rerank: { scores: Map<number, number>; tokens: number } | null = null;
+  const tRerank = process.hrtime.bigint();
   try {
     rerank = await rankWithGemini(query, candidates);
   } catch (err) {
     req.log.warn({ err }, "Gemini rerank failed, falling back to pure cosine");
   }
+  timings.rerank_ms = ms(tRerank);
+  if (rerank) timings.rerank_tokens = rerank.tokens;
 
-  if (!rerank || rerank.size === 0) {
+  if (!rerank || rerank.scores.size === 0) {
+    timings.mode = "vector_only";
     // No rerank: order by cosine, return top-k.
     const list = candidates
       .map((r) => ({ regret: r, score: cosineSimById.get(r.id) ?? 0 }))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
+    writeTimingHeader();
+    req.log.info({ timings, query }, "search.timing");
     res.json(
       SearchRegretsResponse.parse({
         regrets: list.map((s) => serializeRegret(s.regret, s.score)),
@@ -257,10 +344,11 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
     return;
   }
 
+  const rerankScores = rerank.scores;
   const scored = candidates
     .map((r) => ({
       regret: r,
-      score: rerank.get(r.id) ?? 0,
+      score: rerankScores.get(r.id) ?? 0,
       cosine: cosineSimById.get(r.id) ?? 0,
     }))
     .sort((a, b) => b.score - a.score || b.cosine - a.cosine);
@@ -268,6 +356,8 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   const realMatches = scored.filter((s) => s.score >= 4);
   const finalList = realMatches.length > 0 ? realMatches.slice(0, k) : scored.slice(0, k);
 
+  writeTimingHeader();
+  req.log.info({ timings, query }, "search.timing");
   res.json(
     SearchRegretsResponse.parse({
       regrets: finalList.map((s) => serializeRegret(s.regret, s.score / 10)),

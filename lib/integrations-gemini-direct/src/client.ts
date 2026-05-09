@@ -18,3 +18,6 @@ export const gemini = new GoogleGenAI({
 export const EMBEDDING_MODEL = "gemini-embedding-001";
 export const EMBEDDING_DIMENSIONS = 768;
 export const FLASH_MODEL = "gemini-2.5-flash";
+// Flash Lite is ~3-4x faster than Flash for reranking-style scoring tasks
+// where we just need numeric judgment, not deep reasoning.
+export const FLASH_LITE_MODEL = "gemini-2.5-flash-lite";

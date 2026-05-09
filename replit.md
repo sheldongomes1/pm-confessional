@@ -40,7 +40,8 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 ## Search & coach pipeline
 
 - Every visible regret is embedded once with `gemini-embedding-001` (768 dims, RETRIEVAL_DOCUMENT) by `scripts/src/embed-regrets.ts` (concurrency=4). Embeddings live in `regrets.embedding vector(768)` with an HNSW cosine index.
-- `POST /api/regrets/search`: embed query (RETRIEVAL_QUERY) → cosine top-20 → Gemini Flash rerank with strict 0–10 rubric (JSON mime, temp 0) → top-k. Falls back to vector-only if rerank fails, or to keyword `ilike` if Gemini is unreachable. The response carries `retrieval_mode: "vector_rerank" | "vector_only" | "keyword"`.
+- `POST /api/regrets/search`: embed query (RETRIEVAL_QUERY, **LRU-cached** sha256(normalized) for 24h × 500 entries) → cosine top-20 → **if top-1 cosine ≥ `RERANK_THRESHOLD` (default 0.55) skip rerank**, else Gemini Flash **Lite** rerank in a single batched 0–10 call → top-k. Falls back to vector-only if rerank fails, or to keyword `ilike` if Gemini is unreachable. The response carries `retrieval_mode: "vector_rerank" | "vector_only" | "keyword"` and an `X-Search-Timing` header (`embed=…;vector=…;rerank=…;total=…;cache=hit|miss;mode=…;top_cos=…;tokens=…`) for devtools inspection. Per-request timings also log to stdout as `search.timing`.
+- Search latency (May 2026 fix): warm cosine-only path ~200ms, warm same-query (cache hit) ~10ms, forced-rerank path ~1.5s. Was ~11–15s end-to-end before because every request paid for a Flash rerank. Biggest gain by far is the cosine threshold + Flash Lite swap; the embedding LRU mostly helps repeat queries.
 - `POST /api/coach/start` creates a `coaching_sessions` row pinned to a set of regret_ids and returns the opening synthesis. `POST /api/coach/:id/reply` appends a user turn and a grounded model turn. The system prompt forbids any claim that isn't backed by `[#regret_id]` citations and refuses to invent regrets.
 - `GET /api/methodology` exposes live audit stats; `GET /api/insights/public` returns PostHog totals (or local fallback when PostHog Query API keys aren't configured).
 
@@ -80,6 +81,9 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - Source URLs are only available via `search_content`, not `list_content`/`read_content` — episodes without a search hit will have `episode_url = null`
 - Stage `unknown` is legacy — new rows use `general`. OpenAPI enum still includes both for back-compat
 - The deep audit script (`scripts/src/audit-regrets-deep.ts`) probes with `headline_evidence` (verbatim → guaranteed findable in markdown), not `source_quote` (truncated chunk start). Probing with the wrong field reports inflated MISMATCH rates
+- The search rerank LLM is `gemini-2.5-flash-lite` (NOT regular Flash). Flash Lite is ~7× faster on a 20-candidate batched scoring call and quality-equivalent for 0–10 ranking. Don't switch back to Flash without re-measuring `X-Search-Timing`
+- `RERANK_THRESHOLD` env var (default 0.55) is a quality knob: lower → more cosine-only responses (faster, slightly less polished ordering); higher → more LLM rerank (slower, marginally better top-3). Most well-formed PM queries hit 0.6–0.7 on top-1, so default skips rerank for ~90% of traffic
+- Embedding LRU cache lives in `artifacts/api-server/src/routes/regrets/embedding-cache.ts` — pure in-memory, dies on restart. That's fine because the cosine threshold already cuts the 200ms embed call to a non-issue for most users; the cache is just there to make demo-style "hit search again" interactions feel instant
 
 ## Pointers
 

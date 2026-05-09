@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { keepPreviousData } from "@tanstack/react-query";
 import {
@@ -52,6 +53,25 @@ import {
   ChevronsUpDown,
   X,
 } from "lucide-react";
+
+// Live counter for the search status caption — ticks every 100ms while
+// a search is in flight so the user can see the system is alive.
+function useElapsedMs(active: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  React.useEffect(() => {
+    if (!active) {
+      setElapsed(0);
+      return;
+    }
+    const start = performance.now();
+    setElapsed(0);
+    const id = window.setInterval(() => {
+      setElapsed(performance.now() - start);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return elapsed;
+}
 
 export function Home() {
   const [, navigate] = useLocation();
@@ -181,6 +201,7 @@ export function Home() {
   };
 
   const isSearching = searchMutation.isPending;
+  const elapsedMs = useElapsedMs(isSearching);
   const searchResults = searchMutation.data?.regrets;
   const searchMatchCount = searchMutation.data?.match_count ?? 0;
   const searchIsFallback = searchMutation.data?.is_fallback ?? false;
@@ -277,6 +298,19 @@ export function Home() {
               {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search Archive"}
             </Button>
           </form>
+
+          {/* Live search status — perceived-latency mitigation. Tells the
+              user something specific is happening and bounds their patience. */}
+          {isSearching && (
+            <p
+              className="text-sm font-serif italic text-muted-foreground -mt-6 mb-10 transition-opacity"
+              data-testid="search-status"
+            >
+              {elapsedMs > 8000
+                ? `Still searching — Gemini is reranking your top matches… ${(elapsedMs / 1000).toFixed(1)}s`
+                : `Searching 701 confessions… ${(elapsedMs / 1000).toFixed(1)}s`}
+            </p>
+          )}
 
           {!hasSearched && !hasActiveFilters && (
             <p className="text-lg md:text-xl font-serif text-muted-foreground leading-relaxed max-w-2xl mx-auto italic opacity-80">
@@ -676,8 +710,11 @@ export function Home() {
           ) : null}
 
           {isSearching || (isLoadingList && !hasSearched && !listData) ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {[1, 2, 3, 4].map((i) => (
+            <div
+              className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+              data-testid="search-skeletons"
+            >
+              {[1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
                   className="h-[400px] border border-border bg-card p-8 flex flex-col gap-6 animate-pulse"

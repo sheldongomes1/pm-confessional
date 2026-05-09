@@ -1,0 +1,79 @@
+Goal: cut search end-to-end latency from ~10–18s to <4s warm and feel <1s perceived.
+  Constraint: do NOT change the embedding model, the corpus embeddings, the
+  pgvector index, or the audit pipeline. The 701 vectors are not the bottleneck.
+  Cosine top-20 over 701 vectors is microseconds — keep that intact.
+
+  Step 1 — Measure before you fix.
+  Add server-side timing logs to POST /api/regrets/search that report ms for:
+    a. query embedding call to Vertex (Gemini text-embedding-004)
+    b. pgvector cosine top-20
+    c. Gemini Flash rerank
+    d. total handler time
+  Log the four numbers per request to stdout AND return them in a debug header
+  (X-Search-Timing) so I can read them from the browser network panel.
+  Run two real queries (cold + warm) and paste the four numbers back to me before
+  making any other change. We fix what's actually slow, not what we assume.
+
+  Step 2 — Eliminate cold start.
+  Replit free/dev instances sleep. Either flip this Repl to Reserved VM /
+  "Always On", or add a self-ping endpoint /healthz that an external cron hits
+  every 4 minutes to keep the instance warm. Document which one you chose.
+
+  Step 3 — Make the rerank step optional / cheaper.
+  With Gemini text-embedding-004 over 701 confessions, top-20 cosine is already
+  strong. Two changes:
+       cosine-ranked results directly. Add a server config flag RERANK_THRESHOLD
+       so I can tune it.
+    b. If we DO rerank, switch from Gemini Flash to Gemini Flash Lite, and rerank
+       in a single batched call (one prompt that scores all 20 candidates at once,
+       not 20 individual calls). Log the rerank token count.
+  Keep the existing rerank prompt logic; just change model + batching.
+
+  Step 4 — Add a query-embedding LRU cache.
+  In-memory Map keyed by sha256(normalized_query), value = embedding vector.
+  TTL 24h, max 500 entries. Repeat queries should skip the Vertex embedding call
+  entirely. Log a cache hit/miss boolean in X-Search-Timing.
+
+  Step 5 — Kill the silent loading UX.
+  On the search results page, the moment the user clicks Search Archive:
+    - Render 5 skeleton cards immediately (animated shimmer, not a spinner)
+    - Show a small caption under the search bar: "Searching 701 confessions…"
+      that becomes "Searching 701 confessions… 2.1s" with a counter that ticks
+      every 100ms, in the same italic font as the rest of the site
+    - When results arrive, fade skeletons → real cards
+    - If the request takes longer than 8s, change the caption to
+      "Still searching — Gemini is reranking your top matches…" (this is honest
+      and tells the user something specific is happening)
+  This is a perceived-latency fix, not a real-latency fix. Both matter.
+
+  Step 6 — Verify.
+  After all changes, run the same two queries (cold + warm) and report the four
+  timings again. Target:
+    - Warm cosine-only path: total < 1.5s
+    - Warm rerank path: total < 4s
+    - Cold start: should not exist after Step 2
+  Report perceived latency too — when does the first skeleton paint, when does
+  the first real card paint.
+  
+  Do not touch:
+    - The embeddings table
+    - The HNSW index
+    - The Claude extractor
+    - The audit pipeline
+    - The Decision Coach prompt
+  None of those are on the search path's hot loop.
+
+  When you're done, summarize what you changed, the four timing numbers before
+  and after, and which step delivered the biggest gain. Brief — no marketing copy.
+
+  ---
+  A few notes on why this prompt is shaped this way, in case you want to adjust:
+  
+  - It demands a measurement step first. Without timings you (and the agent) will guess. The four-number breakdown will show you whether it's cold start, rerank, or something neither of us suspects (DB
+  connection pool, JSON parsing, network egress).
+  - It explicitly forbids touching the corpus or index. Replit agents love to "improve" things that aren't broken. Lock those down.
+  - The skeleton + counter UX is non-negotiable. Even after Steps 2–4, sometimes Gemini will be slow. The counter tells the user the system is alive and bounds their patience. This single change turns a "broken
+  site" feel into a "powerful but careful AI" feel.
+  - The 0.55 cosine threshold is a starting point, not a fixed value. Tune it based on quality. Most well-formed queries against 701 docs will easily hit 0.6+ on the top-1.
+
+  If after Step 1 the agent reports back and the rerank is somehow not the bottleneck (rare), come back and we'll re-target. But 90% of "my LLM-backed search is slow" is rerank + cold start.
