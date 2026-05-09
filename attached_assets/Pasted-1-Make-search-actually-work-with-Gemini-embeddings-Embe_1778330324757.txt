@@ -1,0 +1,29 @@
+1. Make search actually work, with Gemini embeddings.
+  Embed regret_statement + source_quote with text-embedding-004 (Vertex AI). Store vectors in Postgres via pgvector (you already have Postgres). Query path: embed user input → top-k cosine → rerank top-20 with
+  Gemini Flash → return 5 with similarity scores. This is the single highest-leverage change. It hits grounding + Vertex AI / Gemini + makes the demo work.
+  
+  2. Add a "Decision Coach" agent mode (multi-step, grounded).
+  After search returns 5 confessions, give the user a button: "Ask the room about this decision." Agent: (a) reads the user's decision + the 5 confessions, (b) asks 1–2 clarifying questions, (c) drafts a
+  synthesized "what these PMs would tell you" note with inline verbatim citations linking back to the source episode. This checks agentic workflow and grounding. Build it on Vertex AI Agent Builder or with the
+  Gemini SDK + tool-use loop. Now the demo video writes itself.
+
+  3. Surface your eval/audit story as a public Methodology page.
+  You already audited 776 quotes against 298 transcripts. That's a real eval and nobody knows about it. Add /methodology:
+  - "First extraction prompt caught 33% of regrets. Stricter v2 reached 90%."
+  - "100% of confessions verified verbatim against source transcripts."
+  - Per-confession trust badge: ✓ Verified verbatim.
+  - This is the page a recruiter screenshot-shares to a hiring manager.
+
+  Tier 2 — polish that lifts the demo
+  
+  4. Per-confession deep-link + share. /regret/:id shareable URL, episode link with timestamp, "Listen on Lenny's Podcast" button. Drives credit upstream and earns reach when others share specific quotes.
+  5. Fix homepage default to "all 776" with category tiles (Hiring, Pricing, Strategy, Culture, Customers, Growth, Timing, Fundraising). Removes the stuck-Shreyas issue and gives a visual entry point.
+  6. Fix the leaderboard 0/0/0.0 counter bug.
+  7. Public stats footer: "Searches this week: N. Top decision asked today: ____." Pulled from PostHog. Tells recruiters you measure usage. This is exactly the move Google PMs are trained to make.
+
+  Tier 3 — narrative & distribution
+
+  8. Architecture diagram on a /how-it-works page. MCP fetch → Postgres cache → Gemini extract → audit pipeline → embed → vector search → agent. Diagram = the artifact you walk through in a PM interview.
+  9. "Try this in Google AI Studio" button: a Gemini chat preset that has read access to your archive. Free, fast, signals you live inside Google's stack.
+  10. Footer: provenance & takedown. "All quotes are verbatim from public episodes of Lenny's Podcast. Used with appreciation. Takedown requests: [email]." This is the kind of small respect-for-IP touch a senior
+   PM would notice.
