@@ -299,19 +299,6 @@ export function Home() {
             </Button>
           </form>
 
-          {/* Live search status — perceived-latency mitigation. Tells the
-              user something specific is happening and bounds their patience. */}
-          {isSearching && (
-            <p
-              className="text-sm font-serif italic text-muted-foreground -mt-6 mb-10 transition-opacity"
-              data-testid="search-status"
-            >
-              {elapsedMs > 8000
-                ? `Still searching — Gemini is reranking your top matches… ${(elapsedMs / 1000).toFixed(1)}s`
-                : `Searching 701 confessions… ${(elapsedMs / 1000).toFixed(1)}s`}
-            </p>
-          )}
-
           {!hasSearched && !hasActiveFilters && (
             <p className="text-lg md:text-xl font-serif text-muted-foreground leading-relaxed max-w-2xl mx-auto italic opacity-80">
               Read the locked diary of product leadership. Raw, unpolished admissions from the operators who made the call—and regretted it.
