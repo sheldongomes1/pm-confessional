@@ -178,16 +178,25 @@ export function Home() {
       active_guest: selectedGuest ?? null,
       active_year: selectedYear ?? null,
     });
+    const t0 = performance.now();
     searchMutation.mutate(
       { data: { query: trimmed, limit: 12 } },
       {
         onSuccess: (resp) => {
+          const totalMs = Math.round(performance.now() - t0);
           track("search_completed", {
             query: trimmed,
             match_count: resp.match_count ?? 0,
             result_count: resp.regrets?.length ?? 0,
             is_fallback: resp.is_fallback ?? false,
             zero_results: (resp.regrets?.length ?? 0) === 0,
+            // Tier-policy telemetry — used to validate the 3-tier rerank
+            // distribution + p50/p95 latency by tier on real traffic.
+            rerank_model: resp.rerank_model ?? "unknown",
+            top1_cosine: resp.top1_cosine ?? null,
+            low_confidence: resp.low_confidence ?? false,
+            retrieval_mode: resp.retrieval_mode ?? "unknown",
+            total_ms: totalMs,
           });
         },
         onError: (err) => {

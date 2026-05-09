@@ -15,7 +15,7 @@ import { embedQueryCached } from "./embedding-cache";
 //   top1 < LOW          → rerank with full Flash + flag low_confidence
 // Both thresholds are env-tunable so we can adjust without redeploying logic.
 const HIGH_CONFIDENCE_THRESHOLD = Number(
-  process.env.HIGH_CONFIDENCE_THRESHOLD ?? "0.65",
+  process.env.HIGH_CONFIDENCE_THRESHOLD ?? "0.70",
 );
 const LOW_CONFIDENCE_THRESHOLD = Number(
   process.env.LOW_CONFIDENCE_THRESHOLD ?? "0.45",
