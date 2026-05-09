@@ -299,7 +299,7 @@ export function Home() {
             </Button>
           </form>
 
-          {!hasSearched && !hasActiveFilters && (
+          {!hasSearched && !hasActiveFilters && !isSearching && (
             <p className="text-lg md:text-xl font-serif text-muted-foreground leading-relaxed max-w-2xl mx-auto italic opacity-80">
               Read the locked diary of product leadership. Raw, unpolished admissions from the operators who made the call—and regretted it.
             </p>
