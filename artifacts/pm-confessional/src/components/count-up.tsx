@@ -8,17 +8,27 @@ interface CountUpProps {
 }
 
 export function CountUp({
-  value,
+  value: rawValue,
   duration = 1100,
   decimals = 0,
   className,
 }: CountUpProps) {
-  const [display, setDisplay] = useState(0);
+  // Coerce to a safe number — avoids stuck-at-0 if a parent passes
+  // undefined / null / NaN before its data settles.
+  const value = Number.isFinite(rawValue) ? Number(rawValue) : 0;
+  const [display, setDisplay] = useState(value);
   const startTimeRef = useRef<number | null>(null);
   const fromRef = useRef(0);
+  const previousValueRef = useRef(value);
 
   useEffect(() => {
-    fromRef.current = display;
+    // Don't try to animate non-finite or negative-delta nonsense.
+    if (!Number.isFinite(value)) {
+      setDisplay(value);
+      return;
+    }
+    fromRef.current = previousValueRef.current;
+    previousValueRef.current = value;
     startTimeRef.current = null;
     let frame = 0;
 

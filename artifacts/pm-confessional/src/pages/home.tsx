@@ -44,11 +44,7 @@ export function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [selectedStage, setSelectedStage] = useState<string | undefined>();
-  // Default to one prolific guest so a fresh visit shows a curated subset
-  // (~25 confessions) instead of the full ~1.8k archive — much easier to skim.
-  const [selectedGuest, setSelectedGuest] = useState<string | undefined>(
-    "Shreyas Doshi"
-  );
+  const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 
@@ -213,8 +209,8 @@ export function Home() {
             <Button
               type="submit"
               variant="ghost"
-              className="absolute inset-y-2 right-2 px-6 rounded font-sans uppercase tracking-wider text-xs font-bold text-foreground hover:text-primary hover:bg-transparent"
-              disabled={isSearching || !query.trim()}
+              className="absolute inset-y-2 right-2 px-6 rounded font-sans uppercase tracking-wider text-xs font-bold text-foreground hover:text-primary hover:bg-transparent disabled:opacity-40"
+              disabled={isSearching}
               data-testid="button-search"
             >
               {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search Archive"}

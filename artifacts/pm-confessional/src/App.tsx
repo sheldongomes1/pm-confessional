@@ -6,6 +6,7 @@ import { Layout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 import { Home } from "@/pages/home";
 import { Leaderboard } from "@/pages/leaderboard";
+import { RegretDetail } from "@/pages/regret";
 import { usePageviews } from "@/lib/analytics";
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/browse">{() => <Redirect to="/" />}</Route>
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/regret/:id" component={RegretDetail} />
       <Route component={NotFound} />
     </Switch>
   );
