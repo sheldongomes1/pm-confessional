@@ -129,6 +129,22 @@ export const SearchRegretsResponse = zod.object({
   retrieval_mode: zod
     .enum(["vector_rerank", "vector_only", "keyword"])
     .describe("Which pipeline produced the results"),
+  rerank_model: zod
+    .enum(["none", "flash-lite", "flash"])
+    .optional()
+    .describe("Which Gemini model performed the rerank, if any"),
+  top1_cosine: zod
+    .number()
+    .optional()
+    .describe(
+      "Cosine similarity of the top-1 candidate (rounded to 2 decimals); useful for downstream confidence display",
+    ),
+  low_confidence: zod
+    .boolean()
+    .optional()
+    .describe(
+      "True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak",
+    ),
 });
 
 /**

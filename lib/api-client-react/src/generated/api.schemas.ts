@@ -84,6 +84,18 @@ export const SearchRegretsResponseRetrievalMode = {
   keyword: "keyword",
 } as const;
 
+/**
+ * Which Gemini model performed the rerank, if any
+ */
+export type SearchRegretsResponseRerankModel =
+  (typeof SearchRegretsResponseRerankModel)[keyof typeof SearchRegretsResponseRerankModel];
+
+export const SearchRegretsResponseRerankModel = {
+  none: "none",
+  "flash-lite": "flash-lite",
+  flash: "flash",
+} as const;
+
 export interface SearchRegretsResponse {
   regrets: Regret[];
   query: string;
@@ -93,6 +105,12 @@ export interface SearchRegretsResponse {
   is_fallback: boolean;
   /** Which pipeline produced the results */
   retrieval_mode: SearchRegretsResponseRetrievalMode;
+  /** Which Gemini model performed the rerank, if any */
+  rerank_model?: SearchRegretsResponseRerankModel;
+  /** Cosine similarity of the top-1 candidate (rounded to 2 decimals); useful for downstream confidence display */
+  top1_cosine?: number;
+  /** True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak */
+  low_confidence?: boolean;
 }
 
 export interface CategoryCount {

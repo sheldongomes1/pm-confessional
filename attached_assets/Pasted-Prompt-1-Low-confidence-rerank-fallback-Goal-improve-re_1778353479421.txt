@@ -1,0 +1,136 @@
+Prompt 1 — Low-confidence rerank fallback
+
+  Goal: improve result quality on weak queries without giving up the latency
+  win we just shipped. When the top-1 cosine similarity is low, the cosine-only
+  path silently returns mediocre matches. Fix that with a cheap rerank fallback.
+
+  Current logic (do not break):
+    if top1_cosine >= RERANK_THRESHOLD → skip rerank, return cosine ranking
+    else                               → rerank with Gemini Flash, return reranked
+
+  New logic:
+    if top1_cosine >= HIGH_CONFIDENCE_THRESHOLD (0.65) → skip rerank
+    elif top1_cosine >= LOW_CONFIDENCE_THRESHOLD (0.45) → rerank with
+         Gemini Flash Lite (NOT full Flash). Single batched call,
+         same scoring prompt as before.
+    else (very weak, top1 < 0.45) → rerank with full Gemini Flash, AND
+         attach a server-side flag in the response body:
+         { ..., low_confidence: true, top1_cosine: 0.41 }
+         The frontend will use this later; for now just include it in the JSON.
+
+  Make HIGH_CONFIDENCE_THRESHOLD and LOW_CONFIDENCE_THRESHOLD environment
+  variables with those defaults so I can tune them without redeploying logic.
+
+  Keep the existing X-Search-Timing header. Add two new fields to it:
+    rerank_model: "none" | "flash-lite" | "flash"
+    top1_cosine: 0.71 (rounded to 2 decimals)
+  This lets me see in the network panel which path each query took.
+
+  Do not change:
+    - The embedding model
+    - The corpus embeddings
+    - The pgvector index
+    - The Decision Coach (it has its own retrieval path)
+    - The query-embedding LRU cache
+
+  Verification step:
+  Run these 10 queries in order and report: rerank_model used, top1_cosine,
+  total_ms, and the top-1 regret_statement returned.
+
+    1. "should I hire a senior PM or two juniors"
+    2. "should I raise prices or stay low to grow"
+    3. "did anyone regret expanding internationally too soon"
+    4. "what about pivoting from B2C to B2B"
+    5. "should I outsource my engineering team"
+    6. "when did founders regret hiring a COO"
+    7. "should I sunset a feature with loyal users"
+    8. "should I fire an underperforming senior"
+    9. "should I take VC money or stay bootstrapped"
+   10. "should I rewrite the codebase or keep patching"
+
+  I want to see the distribution: how many fell into each rerank_model
+  bucket, and whether the top-1 looks on-topic for each. Don't grade the
+  results yourself — just paste the table and I'll eyeball.
+
+  If after deploy more than 5/10 queries fall into the "flash" bucket
+  (top1 < 0.45), stop and tell me. That means our embeddings or the
+  corpus coverage need a closer look, not the rerank logic.
+
+  ---
+  Prompt 2 — Public stats footer from PostHog
+  
+  A note before the prompt: showing the raw "top decision asked today" publicly is a small privacy risk. If a user searches "should I fire Bob" or anything embarrassing, that string will go up on the homepage.
+  I'd suggest exposing the top topic (derived from the topic_tag of the top result, e.g., "Hiring", "Pricing") rather than the raw query string. The prompt below does that by default but leaves a config flag if
+  you decide otherwise.
+
+  Goal: add a small public-stats block to the site footer that proves the
+  product is being used. Pulls anonymized aggregates from PostHog. This sits
+  above the existing provenance line, in the same italic typography as the
+  "pattern recognition" quote.
+
+  What it shows:
+    Line 1:  "Searches this week: 247"
+    Line 2:  "Most-asked topic today: Hiring (8 of 23 searches)"
+    Line 3:  "Most-cited confession today: 'I waited too long to tell Bob,
+             then had to fire him.' — Lenny Berman"
+             (truncated to 100 chars, with an ellipsis and a link to /regret/<id>)
+
+  Empty/cold state: if a count is 0, hide that line entirely. Don't show
+  "Searches this week: 0".
+
+  Architecture:
+    - Server endpoint: GET /api/stats/public
+    - Server-side ONLY query to PostHog (the API key must never reach the
+      client). Use the PostHog Python/Node SDK, not raw HTTP.
+    - Cache the response in-memory for 5 minutes (key: "public_stats_v1",
+      TTL 300s). Refresh on demand, not per-request.
+    - Frontend fetches /api/stats/public on home page mount, renders into
+      the footer block. If the request fails or returns empty, hide the
+      block silently — don't break the footer.
+
+  PostHog queries (HogQL or Insights API, whichever is simpler):
+    - searches_this_week: count of `search_submitted` events in last 7 days
+    - top_topic_today: group `search_completed` events from last 24h by
+      the `top_result_topic` property, return the highest-count topic and
+      its count and the day's total
+    - top_cited_today: group `coach_session_started` and `regret_clicked`
+      events from last 24h by `regret_id`, return the highest-count one,
+      then look up its regret_statement and guest_name from our DB
+
+  If those event names don't already exist in PostHog, add the missing
+  captures in the frontend FIRST. Specifically I want:
+    - search_submitted: { query_length, query }
+      (capture the query so we have it for analysis, but DO NOT expose
+       individual queries in the public endpoint)
+    - search_completed: { top_result_id, top_result_topic, top1_cosine,
+                          rerank_model, total_ms, n_results }
+    - regret_clicked: { regret_id, source: "search" | "category" | "coach" }
+    - coach_session_started: { regret_ids: [int] }
+
+  Privacy guardrails (non-negotiable):
+    - The /api/stats/public endpoint MUST NOT return individual query
+      strings, IPs, session IDs, or anything beyond the three lines above.
+    - The "Most-asked topic today" output is the topic enum from our taxonomy
+      (Hiring / Pricing / Product / Growth / Culture / Fundraising / Timing /
+      Customers / Other), never a free-text query.
+    - There is a server config flag PUBLIC_STATS_SHOW_TOP_QUERY (default
+      false). If I flip it true later, the line can become the raw query;
+      until then, only show the topic.
+
+  Footer placement:
+  Insert above the existing "NOT AFFILIATED WITH LENNY'S PODCAST..." block,
+  separated by the same horizontal rule. Use the same Newsreader italic
+  font as the pull-quote. Keep it tight — three lines max.
+
+  Verification step:
+  After deploy, hit /api/stats/public twice in a row. First call should hit
+  PostHog, second call should hit the cache. Report the response JSON for
+  both, plus the cache_hit boolean in a debug header. Then load the homepage
+  and screenshot the footer. If the block is invisible because there's not
+  enough data yet, that's correct behavior — note it and move on.
+
+  ---
+  Order I'd run them in
+  
+  1. Prompt 1 first. The rerank fallback gives you a quality lift on the queries that currently fail silently. The 10-query verification step also gives you the eval data you'd want before posting on LinkedIn.
+  2. Prompt 2 second, after you have a few hours of real traffic. Running the stats endpoint against an empty PostHog will mostly return zeros and the footer will hide itself, which is fine but wastes the build.

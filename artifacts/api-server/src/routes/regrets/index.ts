@@ -5,13 +5,21 @@ import {
   toVectorLiteral,
   gemini,
   FLASH_LITE_MODEL,
+  FLASH_MODEL,
 } from "@workspace/integrations-gemini-direct";
 import { embedQueryCached } from "./embedding-cache";
 
-// Configurable cosine cutoff for skipping the rerank LLM. If the top-1
-// candidate scores >= this similarity, we trust pure cosine and return
-// directly. Tunable per-deployment without a code change.
-const RERANK_THRESHOLD = Number(process.env.RERANK_THRESHOLD ?? "0.55");
+// Three-tier rerank policy by top-1 cosine similarity:
+//   top1 >= HIGH        → no rerank, cosine ranking is good enough
+//   LOW <= top1 < HIGH  → rerank with Flash Lite (fast, cheap)
+//   top1 < LOW          → rerank with full Flash + flag low_confidence
+// Both thresholds are env-tunable so we can adjust without redeploying logic.
+const HIGH_CONFIDENCE_THRESHOLD = Number(
+  process.env.HIGH_CONFIDENCE_THRESHOLD ?? "0.65",
+);
+const LOW_CONFIDENCE_THRESHOLD = Number(
+  process.env.LOW_CONFIDENCE_THRESHOLD ?? "0.45",
+);
 import {
   ListRegretsQueryParams,
   SearchRegretsBody,
@@ -92,6 +100,7 @@ type RankedItem = { id: number; score: number };
 async function rankWithGemini(
   query: string,
   candidates: (typeof regretsTable.$inferSelect)[],
+  model: string = FLASH_LITE_MODEL,
 ): Promise<{ scores: Map<number, number>; tokens: number } | null> {
   if (candidates.length === 0) return { scores: new Map(), tokens: 0 };
   const items = candidates
@@ -129,9 +138,10 @@ ${items}
 Score each candidate and respond with the JSON object as specified.`;
 
   const resp = await gemini.models.generateContent({
-    // Flash Lite is meaningfully faster than Flash for this scoring task —
-    // a single batched call rates all 20 candidates at once.
-    model: FLASH_LITE_MODEL,
+    // Single batched call scores all 20 candidates at once. Caller picks
+    // the model: Flash Lite for normal traffic, full Flash for low-confidence
+    // queries that need a smarter judge.
+    model,
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     config: {
       systemInstruction: systemPrompt,
@@ -180,6 +190,7 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
     cache_hit: false,
     rerank_tokens: 0,
     top_cosine: 0,
+    rerank_model: "none" as "none" | "flash-lite" | "flash",
     mode: "vector_rerank" as
       | "vector_rerank"
       | "vector_only"
@@ -190,7 +201,7 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
     timings.total_ms = ms(t0);
     res.setHeader(
       "X-Search-Timing",
-      `embed=${timings.embed_ms}ms;vector=${timings.vector_ms}ms;rerank=${timings.rerank_ms}ms;total=${timings.total_ms}ms;cache=${timings.cache_hit ? "hit" : "miss"};mode=${timings.mode};top_cos=${timings.top_cosine.toFixed(3)};tokens=${timings.rerank_tokens}`,
+      `embed=${timings.embed_ms}ms;vector=${timings.vector_ms}ms;rerank=${timings.rerank_ms}ms;total=${timings.total_ms}ms;cache=${timings.cache_hit ? "hit" : "miss"};mode=${timings.mode};top1_cosine=${timings.top_cosine.toFixed(2)};rerank_model=${timings.rerank_model};tokens=${timings.rerank_tokens}`,
     );
   };
 
@@ -280,23 +291,23 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   }
   const candidates = candidateRows.map((c) => c.regret);
 
-  // Top-1 cosine — used to decide whether the rerank LLM is even worth it.
-  // candidates are ordered by distance, so candidates[0] is the top.
+  // Top-1 cosine — drives the three-tier rerank policy. Candidates are
+  // ordered by distance, so candidates[0] is the top.
   const topCosine = cosineSimById.get(candidates[0].id) ?? 0;
   timings.top_cosine = topCosine;
+  const top1Rounded = Math.round(topCosine * 100) / 100;
 
-  // Cosine-only short-circuit: when the top match is already strong, the
-  // rerank LLM rarely changes the ranking — and it's the dominant cost.
-  // Tunable via RERANK_THRESHOLD env var (default 0.55).
-  if (topCosine >= RERANK_THRESHOLD) {
+  // Tier 1 — high-confidence cosine: skip rerank entirely.
+  if (topCosine >= HIGH_CONFIDENCE_THRESHOLD) {
     timings.mode = "vector_only";
+    timings.rerank_model = "none";
     const list = candidates
       .map((r) => ({ regret: r, score: cosineSimById.get(r.id) ?? 0 }))
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
     writeTimingHeader();
     req.log.info(
-      { timings, query, reason: "cosine_above_threshold" },
+      { timings, query, reason: "high_confidence_cosine" },
       "search.timing",
     );
     res.json(
@@ -306,17 +317,25 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
         match_count: list.filter((s) => s.score >= 0.4).length,
         is_fallback: false,
         retrieval_mode: "vector_only",
+        rerank_model: "none",
+        top1_cosine: top1Rounded,
+        low_confidence: false,
       }),
     );
     return;
   }
 
-  // Step 3: Gemini Flash Lite rerank — returns 0-10 per candidate, in a
-  // single batched call that scores all 20 at once.
+  // Tier 2 — mid confidence: Flash Lite rerank.
+  // Tier 3 — low confidence (top1 < LOW): full Flash rerank + low_confidence flag.
+  const isLowConfidence = topCosine < LOW_CONFIDENCE_THRESHOLD;
+  const rerankModelName = isLowConfidence ? "flash" : "flash-lite";
+  const rerankModelId = isLowConfidence ? FLASH_MODEL : FLASH_LITE_MODEL;
+  timings.rerank_model = rerankModelName;
+
   let rerank: { scores: Map<number, number>; tokens: number } | null = null;
   const tRerank = process.hrtime.bigint();
   try {
-    rerank = await rankWithGemini(query, candidates);
+    rerank = await rankWithGemini(query, candidates, rerankModelId);
   } catch (err) {
     req.log.warn({ err }, "Gemini rerank failed, falling back to pure cosine");
   }
@@ -325,7 +344,7 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
 
   if (!rerank || rerank.scores.size === 0) {
     timings.mode = "vector_only";
-    // No rerank: order by cosine, return top-k.
+    // Rerank failed: order by cosine, return top-k as a graceful fallback.
     const list = candidates
       .map((r) => ({ regret: r, score: cosineSimById.get(r.id) ?? 0 }))
       .sort((a, b) => b.score - a.score)
@@ -339,6 +358,9 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
         match_count: list.filter((s) => s.score >= 0.4).length,
         is_fallback: true,
         retrieval_mode: "vector_only",
+        rerank_model: rerankModelName,
+        top1_cosine: top1Rounded,
+        low_confidence: isLowConfidence,
       }),
     );
     return;
@@ -365,6 +387,9 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
       match_count: realMatches.length,
       is_fallback: realMatches.length === 0,
       retrieval_mode: "vector_rerank",
+      rerank_model: rerankModelName,
+      top1_cosine: top1Rounded,
+      low_confidence: isLowConfidence,
     }),
   );
 });

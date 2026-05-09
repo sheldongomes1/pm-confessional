@@ -392,6 +392,16 @@ components:
           type: string
           enum: [vector_rerank, vector_only, keyword]
           description: Which pipeline produced the results
+        rerank_model:
+          type: string
+          enum: [none, flash-lite, flash]
+          description: Which Gemini model performed the rerank, if any
+        top1_cosine:
+          type: number
+          description: Cosine similarity of the top-1 candidate (rounded to 2 decimals); useful for downstream confidence display
+        low_confidence:
+          type: boolean
+          description: True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak
       required:
         - regrets
         - query
