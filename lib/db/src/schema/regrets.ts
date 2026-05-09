@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, real, vector } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, real, vector, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -42,7 +42,10 @@ export const regretsTable = pgTable("regrets", {
   headline_evidence: text("headline_evidence"),
   episode_url: text("episode_url"),
   episode_id: integer("episode_id").references(() => episodesTable.id),
-  embedding: text("embedding"),
+  // 768-dim Gemini text-embedding-004 vector. Backfilled by
+  // `scripts/src/embed-regrets.ts`. Used for cosine-similarity retrieval
+  // before Gemini Flash reranking in /api/regrets/search.
+  embedding: vector("embedding", { dimensions: 768 }),
   // Set by the audit script (`scripts/src/audit-regrets-deep.ts`) to the verdict
   // string for any non-PERSONAL_CONFESSION row (HEADLINE_MISMATCH, AMBIGUOUS,
   // GENERAL_ADVICE, THIRD_PARTY, LENNY_NOT_GUEST). NULL means the regret passed
@@ -51,7 +54,12 @@ export const regretsTable = pgTable("regrets", {
   // preserved in the DB for later review.
   audit_verdict: text("audit_verdict"),
   created_at: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  embeddingIdx: index("regrets_embedding_hnsw_idx").using(
+    "hnsw",
+    table.embedding.op("vector_cosine_ops"),
+  ),
+}));
 
 export const insertRegretSchema = createInsertSchema(regretsTable).omit({ id: true, created_at: true });
 export type InsertRegret = z.infer<typeof insertRegretSchema>;

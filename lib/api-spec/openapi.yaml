@@ -16,6 +16,10 @@ tags:
     description: Leaderboard operations
   - name: ingest
     description: Data ingestion operations
+  - name: coach
+    description: Decision Coach agent operations
+  - name: meta
+    description: Methodology, audit stats, and public insights
 paths:
   /healthz:
     get:
@@ -182,6 +186,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/IngestStatus"
 
+  /coach/start:
+    post:
+      operationId: startCoachingSession
+      tags: [coach]
+      summary: Start a Decision Coach session grounded on a set of regrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartCoachingSessionBody"
+      responses:
+        "200":
+          description: Session started with opening message and clarifying questions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartCoachingSessionResponse"
+
+  /coach/{id}:
+    get:
+      operationId: getCoachingSession
+      tags: [coach]
+      summary: Load an existing coaching session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Coaching session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingSession"
+        "404":
+          description: Not found
+
+  /coach/{id}/reply:
+    post:
+      operationId: replyCoachingSession
+      tags: [coach]
+      summary: Send a user message and receive the agent's grounded response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplyCoachingSessionBody"
+      responses:
+        "200":
+          description: Updated session with new agent reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingSession"
+
+  /methodology:
+    get:
+      operationId: getMethodology
+      tags: [meta]
+      summary: Audit stats for the public methodology page
+      responses:
+        "200":
+          description: Methodology stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MethodologyResponse"
+
+  /insights/public:
+    get:
+      operationId: getPublicInsights
+      tags: [meta]
+      summary: Public usage stats for the homepage footer (PostHog-backed when configured, otherwise local)
+      responses:
+        "200":
+          description: Public insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicInsightsResponse"
+
   /ingest/reextract:
     post:
       operationId: reextractRegrets
@@ -289,15 +384,20 @@ components:
           type: string
         match_count:
           type: integer
-          description: Number of regrets the model judged relevant (>=4 score)
+          description: Number of regrets above the rerank confidence threshold
         is_fallback:
           type: boolean
-          description: True when no real matches were found and topic-related fallbacks are returned instead
+          description: True when the Gemini reranker was unavailable and pure cosine ranking was returned instead
+        retrieval_mode:
+          type: string
+          enum: [vector_rerank, vector_only, keyword]
+          description: Which pipeline produced the results
       required:
         - regrets
         - query
         - match_count
         - is_fallback
+        - retrieval_mode
 
     CategoryCount:
       type: object
@@ -452,6 +552,130 @@ components:
         - status
         - episodes_processed
         - regrets_extracted
+
+    StartCoachingSessionBody:
+      type: object
+      properties:
+        decision:
+          type: string
+          description: The user's decision or situation (free text, max ~500 chars)
+        regret_ids:
+          type: array
+          items:
+            type: integer
+          description: IDs of the regrets returned by /regrets/search to ground the coach on
+      required:
+        - decision
+        - regret_ids
+
+    CoachMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, model]
+        content:
+          type: string
+      required:
+        - role
+        - content
+
+    CoachingSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_decision:
+          type: string
+        regret_ids:
+          type: array
+          items:
+            type: integer
+        regrets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Regret"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachMessage"
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - user_decision
+        - regret_ids
+        - regrets
+        - messages
+        - created_at
+        - updated_at
+
+    StartCoachingSessionResponse:
+      type: object
+      properties:
+        session:
+          $ref: "#/components/schemas/CoachingSession"
+      required:
+        - session
+
+    ReplyCoachingSessionBody:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    MethodologyResponse:
+      type: object
+      properties:
+        total_audited:
+          type: integer
+        total_visible:
+          type: integer
+        total_flagged:
+          type: integer
+        flagged_breakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+        verified_verbatim_pct:
+          type: number
+        extractor_v1_precision:
+          type: number
+          description: Initial loose-prompt extractor precision (e.g. 0.33)
+        extractor_v2_precision:
+          type: number
+          description: Strict-prompt extractor precision after iteration (e.g. 0.90)
+        episodes_scanned:
+          type: integer
+      required:
+        - total_audited
+        - total_visible
+        - total_flagged
+        - flagged_breakdown
+        - verified_verbatim_pct
+        - extractor_v1_precision
+        - extractor_v2_precision
+        - episodes_scanned
+
+    PublicInsightsResponse:
+      type: object
+      properties:
+        searches_this_week:
+          type: ["integer", "null"]
+        top_decision_today:
+          type: ["string", "null"]
+        coaching_sessions_total:
+          type: integer
+        source:
+          type: string
+          enum: [posthog, local, unavailable]
+      required:
+        - coaching_sessions_total
+        - source
 
     StartIngestBody:
       type: object

@@ -72,13 +72,27 @@ export interface SearchRegretsBody {
   limit?: number;
 }
 
+/**
+ * Which pipeline produced the results
+ */
+export type SearchRegretsResponseRetrievalMode =
+  (typeof SearchRegretsResponseRetrievalMode)[keyof typeof SearchRegretsResponseRetrievalMode];
+
+export const SearchRegretsResponseRetrievalMode = {
+  vector_rerank: "vector_rerank",
+  vector_only: "vector_only",
+  keyword: "keyword",
+} as const;
+
 export interface SearchRegretsResponse {
   regrets: Regret[];
   query: string;
-  /** Number of regrets the model judged relevant (>=4 score) */
+  /** Number of regrets above the rerank confidence threshold */
   match_count: number;
-  /** True when no real matches were found and topic-related fallbacks are returned instead */
+  /** True when the Gemini reranker was unavailable and pure cosine ranking was returned instead */
   is_fallback: boolean;
+  /** Which pipeline produced the results */
+  retrieval_mode: SearchRegretsResponseRetrievalMode;
 }
 
 export interface CategoryCount {
@@ -152,6 +166,75 @@ export interface IngestStatus {
   started_at?: string | null;
   /** @nullable */
   completed_at?: string | null;
+}
+
+export interface StartCoachingSessionBody {
+  /** The user's decision or situation (free text, max ~500 chars) */
+  decision: string;
+  /** IDs of the regrets returned by /regrets/search to ground the coach on */
+  regret_ids: number[];
+}
+
+export type CoachMessageRole =
+  (typeof CoachMessageRole)[keyof typeof CoachMessageRole];
+
+export const CoachMessageRole = {
+  user: "user",
+  model: "model",
+} as const;
+
+export interface CoachMessage {
+  role: CoachMessageRole;
+  content: string;
+}
+
+export interface CoachingSession {
+  id: number;
+  user_decision: string;
+  regret_ids: number[];
+  regrets: Regret[];
+  messages: CoachMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StartCoachingSessionResponse {
+  session: CoachingSession;
+}
+
+export interface ReplyCoachingSessionBody {
+  message: string;
+}
+
+export interface MethodologyResponse {
+  total_audited: number;
+  total_visible: number;
+  total_flagged: number;
+  flagged_breakdown: CategoryCount[];
+  verified_verbatim_pct: number;
+  /** Initial loose-prompt extractor precision (e.g. 0.33) */
+  extractor_v1_precision: number;
+  /** Strict-prompt extractor precision after iteration (e.g. 0.90) */
+  extractor_v2_precision: number;
+  episodes_scanned: number;
+}
+
+export type PublicInsightsResponseSource =
+  (typeof PublicInsightsResponseSource)[keyof typeof PublicInsightsResponseSource];
+
+export const PublicInsightsResponseSource = {
+  posthog: "posthog",
+  local: "local",
+  unavailable: "unavailable",
+} as const;
+
+export interface PublicInsightsResponse {
+  /** @nullable */
+  searches_this_week?: number | null;
+  /** @nullable */
+  top_decision_today?: string | null;
+  coaching_sessions_total: number;
+  source: PublicInsightsResponseSource;
 }
 
 export interface StartIngestBody {

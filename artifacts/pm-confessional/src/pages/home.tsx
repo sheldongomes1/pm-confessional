@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { keepPreviousData } from "@tanstack/react-query";
 import {
   useSearchRegrets,
   useListRegrets,
   useGetCategories,
   useGetLeaderboard,
+  useStartCoachingSession,
   getGetCategoriesQueryKey,
   getGetLeaderboardQueryKey,
   getListRegretsQueryKey,
@@ -15,6 +16,19 @@ import { track } from "@/lib/analytics";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MessageSquare, Sparkles } from "lucide-react";
+
+// Tile order matches the canonical topic_tag enum from the OpenAPI spec.
+const TOPIC_TILES: Array<{ key: string; label: string }> = [
+  { key: "hiring", label: "Hiring" },
+  { key: "pricing", label: "Pricing" },
+  { key: "product", label: "Product" },
+  { key: "growth", label: "Growth" },
+  { key: "culture", label: "Culture" },
+  { key: "fundraising", label: "Fundraising" },
+  { key: "timing", label: "Timing" },
+  { key: "customers", label: "Customers" },
+];
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,6 +54,7 @@ import {
 } from "lucide-react";
 
 export function Home() {
+  const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
@@ -49,6 +64,10 @@ export function Home() {
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
 
   const searchMutation = useSearchRegrets();
+  const startCoachMutation = useStartCoachingSession();
+
+  // Build a lookup so the tiles can show live counts.
+  const topicCountMap = new Map<string, number>();
 
   const { data: categories } = useGetCategories({
     query: { queryKey: getGetCategoriesQueryKey() },
@@ -57,9 +76,51 @@ export function Home() {
     query: { queryKey: getGetLeaderboardQueryKey() },
   });
 
+  for (const c of categories?.by_topic ?? []) {
+    topicCountMap.set(c.label, c.count);
+  }
+
   const guests = (leaderboard?.entries ?? [])
     .map((e) => ({ name: e.guest_name, count: e.regret_count }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const handleTileClick = (topicKey: string) => {
+    const next = selectedTopic === topicKey ? undefined : topicKey;
+    track("topic_tile_clicked", {
+      topic: topicKey,
+      action: next ? "applied" : "removed",
+    });
+    setSelectedTopic(next);
+    if (next) {
+      // Reset any in-flight search so the filtered list takes over.
+      searchMutation.reset();
+      setTimeout(() => {
+        document
+          .getElementById("results-section")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  };
+
+  const handleStartCoach = () => {
+    const ids = (searchMutation.data?.regrets ?? [])
+      .slice(0, 5)
+      .map((r) => r.id);
+    const decision = searchMutation.data?.query?.trim();
+    if (!decision || ids.length === 0 || startCoachMutation.isPending) return;
+    track("coach_started", {
+      decision_length: decision.length,
+      regret_count: ids.length,
+    });
+    startCoachMutation.mutate(
+      { data: { decision, regret_ids: ids } },
+      {
+        onSuccess: (resp) => {
+          navigate(`/coach/${resp.session.id}`);
+        },
+      },
+    );
+  };
 
   const hasActiveFilters = Boolean(
     selectedTopic || selectedStage || selectedGuest || selectedYear
@@ -222,6 +283,43 @@ export function Home() {
               Read the locked diary of product leadership. Raw, unpolished admissions from the operators who made the call—and regretted it.
             </p>
           )}
+
+          {/* Topic tiles — quick category filters with live counts */}
+          <div className="mt-14 max-w-4xl mx-auto">
+            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-5">
+              Or browse by what burned them
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {TOPIC_TILES.map((tile) => {
+                const count = topicCountMap.get(tile.key) ?? 0;
+                const active = selectedTopic === tile.key;
+                return (
+                  <button
+                    key={tile.key}
+                    onClick={() => handleTileClick(tile.key)}
+                    disabled={count === 0}
+                    data-testid={`tile-${tile.key}`}
+                    className={`group border p-4 text-left transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-card/40 hover:border-primary/60 hover:bg-card text-foreground"
+                    }`}
+                  >
+                    <p className="font-serif text-lg leading-snug">
+                      {tile.label}
+                    </p>
+                    <p
+                      className={`text-[10px] uppercase tracking-widest font-mono mt-1 ${
+                        active ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      {count} confessions
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Refine — collapsible filter panel */}
           <Collapsible
@@ -482,8 +580,39 @@ export function Home() {
       </section>
 
       {/* Results / Featured Section */}
-      <section className="py-20 px-6 flex-1 bg-background">
+      <section id="results-section" className="py-20 px-6 flex-1 bg-background">
         <div className="container mx-auto max-w-7xl">
+          {/* Ask the room CTA — only after a successful search with results */}
+          {hasSearched && (searchResults?.length ?? 0) > 0 && (
+            <div className="mb-10 border border-primary/40 bg-primary/5 p-6 md:p-8 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+              <div className="flex-1">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary mb-2 inline-flex items-center gap-2">
+                  <Sparkles className="w-3 h-3" /> New
+                </p>
+                <p className="font-serif text-xl md:text-2xl text-foreground leading-snug">
+                  Ask the room about this decision.
+                </p>
+                <p className="text-sm text-muted-foreground italic font-serif mt-1">
+                  A Gemini-grounded coach reads the top {Math.min(5, searchResults?.length ?? 0)} confessions and helps you think it through. Citations only — no invented advice.
+                </p>
+              </div>
+              <Button
+                onClick={handleStartCoach}
+                disabled={startCoachMutation.isPending}
+                className="rounded-none text-xs uppercase tracking-widest font-bold whitespace-nowrap"
+                data-testid="button-ask-the-room"
+              >
+                {startCoachMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Ask the room
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
           {hasSearched ? (
             <div className="mb-12 flex items-end justify-between border-b border-border pb-4 gap-6 flex-wrap">
               <div>

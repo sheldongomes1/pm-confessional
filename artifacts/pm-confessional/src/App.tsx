@@ -7,6 +7,9 @@ import NotFound from "@/pages/not-found";
 import { Home } from "@/pages/home";
 import { Leaderboard } from "@/pages/leaderboard";
 import { RegretDetail } from "@/pages/regret";
+import { Coach } from "@/pages/coach";
+import { Methodology } from "@/pages/methodology";
+import { HowItWorks } from "@/pages/how-it-works";
 import { usePageviews } from "@/lib/analytics";
 
 const queryClient = new QueryClient({
@@ -26,6 +29,9 @@ function Router() {
       <Route path="/browse">{() => <Redirect to="/" />}</Route>
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/regret/:id" component={RegretDetail} />
+      <Route path="/coach/:id" component={Coach} />
+      <Route path="/methodology" component={Methodology} />
+      <Route path="/how-it-works" component={HowItWorks} />
       <Route component={NotFound} />
     </Switch>
   );

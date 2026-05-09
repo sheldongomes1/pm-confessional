@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Regret } from "@workspace/api-client-react";
 import { roleFor } from "@/lib/guest-roles";
 import { track } from "@/lib/analytics";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ShieldCheck } from "lucide-react";
 
 export function RegretCard({ regret }: { regret: Regret }) {
   // Prefer the extractor's verbatim headline_evidence span (the exact words
@@ -45,8 +45,8 @@ export function RegretCard({ regret }: { regret: Regret }) {
         className="p-8 bg-card border-border hover:border-primary/50 transition-colors duration-500 group flex flex-col h-full rounded-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         data-testid={`regret-card-${regret.id}`}
       >
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/40 gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-wrap">
             <span className="text-[10px] uppercase tracking-widest font-bold text-primary">
               {regret.topic_tag}
             </span>
@@ -54,8 +54,16 @@ export function RegretCard({ regret }: { regret: Regret }) {
             <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
               {regret.stage} Stage
             </span>
+            {regret.headline_evidence ? (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold text-primary/80 border border-primary/30 px-1.5 py-0.5"
+                title="Verified verbatim against the source transcript"
+              >
+                <ShieldCheck className="w-2.5 h-2.5" /> Verbatim
+              </span>
+            ) : null}
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">
             {regret.episode_date
               ? new Date(regret.episode_date).getFullYear()
               : "Date Unknown"}

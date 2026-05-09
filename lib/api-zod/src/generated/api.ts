@@ -120,12 +120,15 @@ export const SearchRegretsResponse = zod.object({
   query: zod.string(),
   match_count: zod
     .number()
-    .describe("Number of regrets the model judged relevant (>=4 score)"),
+    .describe("Number of regrets above the rerank confidence threshold"),
   is_fallback: zod
     .boolean()
     .describe(
-      "True when no real matches were found and topic-related fallbacks are returned instead",
+      "True when the Gemini reranker was unavailable and pure cosine ranking was returned instead",
     ),
+  retrieval_mode: zod
+    .enum(["vector_rerank", "vector_only", "keyword"])
+    .describe("Which pipeline produced the results"),
 });
 
 /**
@@ -289,4 +292,221 @@ export const StartIngestBody = zod.object({
     .boolean()
     .default(startIngestBodySampleOnlyDefault)
     .describe("Run on sample of 10 episodes only"),
+});
+
+/**
+ * @summary Start a Decision Coach session grounded on a set of regrets
+ */
+export const StartCoachingSessionBody = zod.object({
+  decision: zod
+    .string()
+    .describe("The user's decision or situation (free text, max ~500 chars)"),
+  regret_ids: zod
+    .array(zod.number())
+    .describe(
+      "IDs of the regrets returned by \/regrets\/search to ground the coach on",
+    ),
+});
+
+export const StartCoachingSessionResponse = zod.object({
+  session: zod.object({
+    id: zod.number(),
+    user_decision: zod.string(),
+    regret_ids: zod.array(zod.number()),
+    regrets: zod.array(
+      zod.object({
+        id: zod.number(),
+        guest_name: zod.string(),
+        episode_title: zod.string(),
+        episode_date: zod.string().nullish(),
+        company: zod.string().nullish(),
+        stage: zod
+          .enum(["early", "growth", "scale", "general", "unknown"])
+          .describe(
+            "`unknown` is legacy and being phased out — new rows use `general`.",
+          ),
+        topic_tag: zod.enum([
+          "hiring",
+          "pricing",
+          "product",
+          "growth",
+          "culture",
+          "fundraising",
+          "timing",
+          "customers",
+          "other",
+        ]),
+        regret_statement: zod.string(),
+        source_quote: zod.string(),
+        headline_evidence: zod
+          .string()
+          .nullish()
+          .describe(
+            "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+          ),
+        episode_url: zod.string().nullish(),
+        relevance_score: zod.number().nullish(),
+        created_at: zod.string(),
+      }),
+    ),
+    messages: zod.array(
+      zod.object({
+        role: zod.enum(["user", "model"]),
+        content: zod.string(),
+      }),
+    ),
+    created_at: zod.string(),
+    updated_at: zod.string(),
+  }),
+});
+
+/**
+ * @summary Load an existing coaching session
+ */
+export const GetCoachingSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetCoachingSessionResponse = zod.object({
+  id: zod.number(),
+  user_decision: zod.string(),
+  regret_ids: zod.array(zod.number()),
+  regrets: zod.array(
+    zod.object({
+      id: zod.number(),
+      guest_name: zod.string(),
+      episode_title: zod.string(),
+      episode_date: zod.string().nullish(),
+      company: zod.string().nullish(),
+      stage: zod
+        .enum(["early", "growth", "scale", "general", "unknown"])
+        .describe(
+          "`unknown` is legacy and being phased out — new rows use `general`.",
+        ),
+      topic_tag: zod.enum([
+        "hiring",
+        "pricing",
+        "product",
+        "growth",
+        "culture",
+        "fundraising",
+        "timing",
+        "customers",
+        "other",
+      ]),
+      regret_statement: zod.string(),
+      source_quote: zod.string(),
+      headline_evidence: zod
+        .string()
+        .nullish()
+        .describe(
+          "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+        ),
+      episode_url: zod.string().nullish(),
+      relevance_score: zod.number().nullish(),
+      created_at: zod.string(),
+    }),
+  ),
+  messages: zod.array(
+    zod.object({
+      role: zod.enum(["user", "model"]),
+      content: zod.string(),
+    }),
+  ),
+  created_at: zod.string(),
+  updated_at: zod.string(),
+});
+
+/**
+ * @summary Send a user message and receive the agent's grounded response
+ */
+export const ReplyCoachingSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ReplyCoachingSessionBody = zod.object({
+  message: zod.string(),
+});
+
+export const ReplyCoachingSessionResponse = zod.object({
+  id: zod.number(),
+  user_decision: zod.string(),
+  regret_ids: zod.array(zod.number()),
+  regrets: zod.array(
+    zod.object({
+      id: zod.number(),
+      guest_name: zod.string(),
+      episode_title: zod.string(),
+      episode_date: zod.string().nullish(),
+      company: zod.string().nullish(),
+      stage: zod
+        .enum(["early", "growth", "scale", "general", "unknown"])
+        .describe(
+          "`unknown` is legacy and being phased out — new rows use `general`.",
+        ),
+      topic_tag: zod.enum([
+        "hiring",
+        "pricing",
+        "product",
+        "growth",
+        "culture",
+        "fundraising",
+        "timing",
+        "customers",
+        "other",
+      ]),
+      regret_statement: zod.string(),
+      source_quote: zod.string(),
+      headline_evidence: zod
+        .string()
+        .nullish()
+        .describe(
+          "Verbatim 8-40 word span from the transcript that proves the headline. Strictly more accurate than `source_quote` (which is the first 500 chars of an 800-word window).",
+        ),
+      episode_url: zod.string().nullish(),
+      relevance_score: zod.number().nullish(),
+      created_at: zod.string(),
+    }),
+  ),
+  messages: zod.array(
+    zod.object({
+      role: zod.enum(["user", "model"]),
+      content: zod.string(),
+    }),
+  ),
+  created_at: zod.string(),
+  updated_at: zod.string(),
+});
+
+/**
+ * @summary Audit stats for the public methodology page
+ */
+export const GetMethodologyResponse = zod.object({
+  total_audited: zod.number(),
+  total_visible: zod.number(),
+  total_flagged: zod.number(),
+  flagged_breakdown: zod.array(
+    zod.object({
+      label: zod.string(),
+      count: zod.number(),
+    }),
+  ),
+  verified_verbatim_pct: zod.number(),
+  extractor_v1_precision: zod
+    .number()
+    .describe("Initial loose-prompt extractor precision (e.g. 0.33)"),
+  extractor_v2_precision: zod
+    .number()
+    .describe("Strict-prompt extractor precision after iteration (e.g. 0.90)"),
+  episodes_scanned: zod.number(),
+});
+
+/**
+ * @summary Public usage stats for the homepage footer (PostHog-backed when configured, otherwise local)
+ */
+export const GetPublicInsightsResponse = zod.object({
+  searches_this_week: zod.number().nullish(),
+  top_decision_today: zod.string().nullish(),
+  coaching_sessions_total: zod.number(),
+  source: zod.enum(["posthog", "local", "unavailable"]),
 });

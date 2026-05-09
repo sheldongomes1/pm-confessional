@@ -18,14 +18,20 @@ import type {
 
 import type {
   CategoriesResponse,
+  CoachingSession,
   HealthStatus,
   IngestStatus,
   LeaderboardResponse,
   ListRegretsParams,
   ListRegretsResponse,
+  MethodologyResponse,
+  PublicInsightsResponse,
   Regret,
+  ReplyCoachingSessionBody,
   SearchRegretsBody,
   SearchRegretsResponse,
+  StartCoachingSessionBody,
+  StartCoachingSessionResponse,
   StartIngestBody,
   StatsResponse,
 } from "./api.schemas";
@@ -757,6 +763,421 @@ export const useStartIngest = <
 > => {
   return useMutation(getStartIngestMutationOptions(options));
 };
+
+/**
+ * @summary Start a Decision Coach session grounded on a set of regrets
+ */
+export const getStartCoachingSessionUrl = () => {
+  return `/api/coach/start`;
+};
+
+export const startCoachingSession = async (
+  startCoachingSessionBody: StartCoachingSessionBody,
+  options?: RequestInit,
+): Promise<StartCoachingSessionResponse> => {
+  return customFetch<StartCoachingSessionResponse>(
+    getStartCoachingSessionUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(startCoachingSessionBody),
+    },
+  );
+};
+
+export const getStartCoachingSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startCoachingSession>>,
+    TError,
+    { data: BodyType<StartCoachingSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startCoachingSession>>,
+  TError,
+  { data: BodyType<StartCoachingSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["startCoachingSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startCoachingSession>>,
+    { data: BodyType<StartCoachingSessionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return startCoachingSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartCoachingSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startCoachingSession>>
+>;
+export type StartCoachingSessionMutationBody =
+  BodyType<StartCoachingSessionBody>;
+export type StartCoachingSessionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Start a Decision Coach session grounded on a set of regrets
+ */
+export const useStartCoachingSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startCoachingSession>>,
+    TError,
+    { data: BodyType<StartCoachingSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startCoachingSession>>,
+  TError,
+  { data: BodyType<StartCoachingSessionBody> },
+  TContext
+> => {
+  return useMutation(getStartCoachingSessionMutationOptions(options));
+};
+
+/**
+ * @summary Load an existing coaching session
+ */
+export const getGetCoachingSessionUrl = (id: number) => {
+  return `/api/coach/${id}`;
+};
+
+export const getCoachingSession = async (
+  id: number,
+  options?: RequestInit,
+): Promise<CoachingSession> => {
+  return customFetch<CoachingSession>(getGetCoachingSessionUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCoachingSessionQueryKey = (id: number) => {
+  return [`/api/coach/${id}`] as const;
+};
+
+export const getGetCoachingSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCoachingSession>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCoachingSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetCoachingSessionQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCoachingSession>>
+  > = ({ signal }) => getCoachingSession(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCoachingSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCoachingSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCoachingSession>>
+>;
+export type GetCoachingSessionQueryError = ErrorType<void>;
+
+/**
+ * @summary Load an existing coaching session
+ */
+
+export function useGetCoachingSession<
+  TData = Awaited<ReturnType<typeof getCoachingSession>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getCoachingSession>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCoachingSessionQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Send a user message and receive the agent's grounded response
+ */
+export const getReplyCoachingSessionUrl = (id: number) => {
+  return `/api/coach/${id}/reply`;
+};
+
+export const replyCoachingSession = async (
+  id: number,
+  replyCoachingSessionBody: ReplyCoachingSessionBody,
+  options?: RequestInit,
+): Promise<CoachingSession> => {
+  return customFetch<CoachingSession>(getReplyCoachingSessionUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(replyCoachingSessionBody),
+  });
+};
+
+export const getReplyCoachingSessionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replyCoachingSession>>,
+    TError,
+    { id: number; data: BodyType<ReplyCoachingSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replyCoachingSession>>,
+  TError,
+  { id: number; data: BodyType<ReplyCoachingSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["replyCoachingSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replyCoachingSession>>,
+    { id: number; data: BodyType<ReplyCoachingSessionBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return replyCoachingSession(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplyCoachingSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof replyCoachingSession>>
+>;
+export type ReplyCoachingSessionMutationBody =
+  BodyType<ReplyCoachingSessionBody>;
+export type ReplyCoachingSessionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Send a user message and receive the agent's grounded response
+ */
+export const useReplyCoachingSession = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replyCoachingSession>>,
+    TError,
+    { id: number; data: BodyType<ReplyCoachingSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof replyCoachingSession>>,
+  TError,
+  { id: number; data: BodyType<ReplyCoachingSessionBody> },
+  TContext
+> => {
+  return useMutation(getReplyCoachingSessionMutationOptions(options));
+};
+
+/**
+ * @summary Audit stats for the public methodology page
+ */
+export const getGetMethodologyUrl = () => {
+  return `/api/methodology`;
+};
+
+export const getMethodology = async (
+  options?: RequestInit,
+): Promise<MethodologyResponse> => {
+  return customFetch<MethodologyResponse>(getGetMethodologyUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMethodologyQueryKey = () => {
+  return [`/api/methodology`] as const;
+};
+
+export const getGetMethodologyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMethodology>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMethodology>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMethodologyQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMethodology>>> = ({
+    signal,
+  }) => getMethodology({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMethodology>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMethodologyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMethodology>>
+>;
+export type GetMethodologyQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Audit stats for the public methodology page
+ */
+
+export function useGetMethodology<
+  TData = Awaited<ReturnType<typeof getMethodology>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getMethodology>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMethodologyQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Public usage stats for the homepage footer (PostHog-backed when configured, otherwise local)
+ */
+export const getGetPublicInsightsUrl = () => {
+  return `/api/insights/public`;
+};
+
+export const getPublicInsights = async (
+  options?: RequestInit,
+): Promise<PublicInsightsResponse> => {
+  return customFetch<PublicInsightsResponse>(getGetPublicInsightsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicInsightsQueryKey = () => {
+  return [`/api/insights/public`] as const;
+};
+
+export const getGetPublicInsightsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicInsights>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicInsights>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPublicInsightsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicInsights>>
+  > = ({ signal }) => getPublicInsights({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicInsights>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicInsightsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicInsights>>
+>;
+export type GetPublicInsightsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public usage stats for the homepage footer (PostHog-backed when configured, otherwise local)
+ */
+
+export function useGetPublicInsights<
+  TData = Awaited<ReturnType<typeof getPublicInsights>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicInsights>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicInsightsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * Re-runs the regret extractor against episodes that already have cached markdown. For episodes missing cached markdown (legacy rows scanned before the cache existed), the transcript is fetched from MCP and cached. Use this after iterating on the extractor prompt to refresh the dataset without paying the full ingestion cost.

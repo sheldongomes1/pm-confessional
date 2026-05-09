@@ -17,11 +17,12 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - Frontend: React + Vite + Tailwind CSS + shadcn/ui + wouter
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- AI: Anthropic claude-sonnet-4-6 via Replit AI Integrations proxy
+- DB: PostgreSQL + pgvector 0.8.0 (HNSW cosine index on `vector(768)`)
+- AI extraction/audit: Anthropic claude-sonnet-4-6 via Replit AI Integrations proxy
+- AI search/coach: Google Gemini (`gemini-embedding-001` for vectors, `gemini-2.5-flash` for rerank + Decision Coach) via direct API key (Replit-managed Gemini does not expose embeddings)
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Build: esbuild (CJS bundle, externals `@google/*` so `@google/genai` must be a direct dep of `api-server`)
 
 ## Where things live
 
@@ -30,7 +31,18 @@ A semantic search app that mines Lenny's podcast archive for hard-won PM mistake
 - Backend routes: `artifacts/api-server/src/routes/regrets/` and `artifacts/api-server/src/routes/ingest/`
 - Frontend: `artifacts/pm-confessional/src/`
 - Anthropic integration: `lib/integrations-anthropic-ai/`
+- Gemini integration: `lib/integrations-gemini-direct/` (uses `GEMINI_API_KEY`)
 - Generated hooks: `lib/api-client-react/src/generated/api.ts`
+- Coach + meta routes: `artifacts/api-server/src/routes/{coach.ts,meta.ts}`
+- Decision Coach UI: `artifacts/pm-confessional/src/pages/coach.tsx`
+- Methodology / How-it-works pages: `artifacts/pm-confessional/src/pages/{methodology.tsx,how-it-works.tsx}`
+
+## Search & coach pipeline
+
+- Every visible regret is embedded once with `gemini-embedding-001` (768 dims, RETRIEVAL_DOCUMENT) by `scripts/src/embed-regrets.ts` (concurrency=4). Embeddings live in `regrets.embedding vector(768)` with an HNSW cosine index.
+- `POST /api/regrets/search`: embed query (RETRIEVAL_QUERY) → cosine top-20 → Gemini Flash rerank with strict 0–10 rubric (JSON mime, temp 0) → top-k. Falls back to vector-only if rerank fails, or to keyword `ilike` if Gemini is unreachable. The response carries `retrieval_mode: "vector_rerank" | "vector_only" | "keyword"`.
+- `POST /api/coach/start` creates a `coaching_sessions` row pinned to a set of regret_ids and returns the opening synthesis. `POST /api/coach/:id/reply` appends a user turn and a grounded model turn. The system prompt forbids any claim that isn't backed by `[#regret_id]` citations and refuses to invent regrets.
+- `GET /api/methodology` exposes live audit stats; `GET /api/insights/public` returns PostHog totals (or local fallback when PostHog Query API keys aren't configured).
 
 ## Architecture decisions
 

@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "embed-regrets": "tsx ./src/embed-regrets.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@workspace/integrations-gemini-direct": "workspace:*",
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.95.0",
