@@ -82,6 +82,9 @@ export function Home() {
   const [selectedGuest, setSelectedGuest] = useState<string | undefined>();
   const [selectedYear, setSelectedYear] = useState<string | undefined>();
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
+  // Low-confidence searches require explicit opt-in to see the loose
+  // matches. Reset on every new search so each query starts hidden.
+  const [showLooseAnyway, setShowLooseAnyway] = useState(false);
 
   const searchMutation = useSearchRegrets();
   const startCoachMutation = useStartCoachingSession();
@@ -168,9 +171,13 @@ export function Home() {
     }
   );
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = query.trim();
+  // Shared search executor — both the search form and the low-conf
+  // suggestion buttons funnel through here so telemetry, state reset,
+  // and mutation calls stay in one place. `source` is just a tag on the
+  // search_submitted event so PostHog can split organic vs suggestion
+  // funnel traffic.
+  const runSearch = (rawQuery: string, source: "form" | "low_conf_suggestion") => {
+    const trimmed = rawQuery.trim();
     if (!trimmed) return;
     track("search_submitted", {
       query: trimmed,
@@ -181,7 +188,9 @@ export function Home() {
       active_stage: selectedStage ?? null,
       active_guest: selectedGuest ?? null,
       active_year: selectedYear ?? null,
+      source,
     });
+    setShowLooseAnyway(false);
     const t0 = performance.now();
     searchMutation.mutate(
       { data: { query: trimmed, limit: 12 } },
@@ -201,16 +210,23 @@ export function Home() {
             low_confidence: resp.low_confidence ?? false,
             retrieval_mode: resp.retrieval_mode ?? "unknown",
             total_ms: totalMs,
+            source,
           });
         },
         onError: (err) => {
           track("search_failed", {
             query: trimmed,
             error: err instanceof Error ? err.message : "unknown",
+            source,
           });
         },
       },
     );
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    runSearch(query, "form");
   };
 
   const isSearching = searchMutation.isPending;
@@ -222,6 +238,39 @@ export function Home() {
   // otherwise editing the input after submitting desyncs the header label.
   const submittedQuery = searchMutation.data?.query ?? "";
   const hasSearched = searchMutation.isSuccess;
+  const searchConfidence =
+    searchMutation.data?.retrieval_confidence ?? "high";
+  // Trust gate: if the system isn't confident the archive answers this
+  // question, hide the cards and force an explicit opt-in. Two CTAs on a
+  // "no match" page (results + Ask the room) is confusing, so we also
+  // hide the Ask-the-room panel until the user opts in.
+  const lowConfidenceHidden =
+    hasSearched && searchConfidence === "low" && !showLooseAnyway;
+  const showAskTheRoomCta =
+    hasSearched && (searchResults?.length ?? 0) > 0 && !lowConfidenceHidden;
+  // Hardcoded suggestions surfaced in the low-confidence empty state.
+  // Pulled from the three highest-volume topics (product, culture,
+  // hiring) so the user gets strong matches if they pivot.
+  const LOW_CONF_SUGGESTIONS = [
+    "should I hire fast or slow",
+    "should I raise prices",
+    "should I sunset a feature",
+  ];
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setQuery(suggestion);
+    track("low_conf_suggestion_clicked", { suggestion });
+    runSearch(suggestion, "low_conf_suggestion");
+  };
+
+  const handleShowLooseAnyway = () => {
+    track("loose_results_shown", {
+      query: submittedQuery,
+      top1_cosine: searchMutation.data?.top1_cosine ?? null,
+      n_results_shown: searchResults?.length ?? 0,
+    });
+    setShowLooseAnyway(true);
+  };
 
   const regretsToShow = hasSearched ? searchResults : listData?.regrets;
   const showEmptyState =
@@ -619,7 +668,7 @@ export function Home() {
           {/* Ask the room CTA — only after a successful search with results.
               Copy + button label adapt to retrieval_confidence so we don't
               promise grounded coaching on out-of-scope queries. */}
-          {hasSearched && (searchResults?.length ?? 0) > 0 && (() => {
+          {showAskTheRoomCta && (() => {
             const confidence =
               searchMutation.data?.retrieval_confidence ?? "high";
             const buttonLabel =
@@ -665,13 +714,17 @@ export function Home() {
               </div>
             );
           })()}
-          {hasSearched ? (
+          {hasSearched && !lowConfidenceHidden ? (
             <div className="mb-12 flex items-end justify-between border-b border-border pb-4 gap-6 flex-wrap">
               <div>
                 <h2 className="text-sm font-sans uppercase tracking-widest text-muted-foreground mb-2">
-                  {searchIsFallback
-                    ? "No exact match — closest by topic"
-                    : "Search Results"}
+                  {showLooseAnyway
+                    ? `${searchResults?.length ?? 0} loose matches — none directly answer your question`
+                    : searchConfidence === "medium"
+                      ? "Search Results"
+                      : searchIsFallback
+                        ? "No exact match — closest by topic"
+                        : "Search Results"}
                 </h2>
                 <p
                   className="text-3xl font-serif font-normal text-foreground"
@@ -679,6 +732,12 @@ export function Home() {
                 >
                   "{submittedQuery}"
                 </p>
+                {searchConfidence === "medium" && !showLooseAnyway && (
+                  <p className="text-sm font-serif italic text-muted-foreground mt-2">
+                    Loose match — the closest confessions, not direct
+                    answers.
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-4">
                 <span
@@ -727,7 +786,60 @@ export function Home() {
             </div>
           ) : null}
 
-          {isSearching || (isLoadingList && !hasSearched && !listData) ? (
+          {lowConfidenceHidden ? (
+            <div
+              className="max-w-2xl mx-auto border border-border bg-card p-8 md:p-12"
+              data-testid="empty-state-low-confidence"
+            >
+              <h2 className="text-xs font-sans uppercase tracking-[0.3em] font-bold text-muted-foreground mb-6">
+                No match in the archive
+              </h2>
+              <p
+                className="text-3xl md:text-4xl font-serif font-normal text-foreground mb-8 leading-tight"
+                data-testid="text-search-query"
+              >
+                "{submittedQuery}"
+              </p>
+              <p className="font-serif text-base md:text-lg text-foreground leading-relaxed mb-8">
+                No confession in the archive directly answers this. The
+                PM Confessional covers product, hiring, pricing, growth,
+                culture, fundraising, timing, and customer regrets from
+                PM podcast guests.
+              </p>
+              <div className="mb-10">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4">
+                  Try one of:
+                </p>
+                <ul className="space-y-2">
+                  {LOW_CONF_SUGGESTIONS.map((s) => (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        onClick={() => handleSuggestionClick(s)}
+                        className="font-serif italic text-base md:text-lg text-primary hover:text-foreground transition-colors text-left border-b border-transparent hover:border-primary"
+                        data-testid={`button-suggestion-${s.replace(/\s+/g, "-")}`}
+                      >
+                        {s}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="border-t border-border pt-8">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4">
+                  Or:
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={handleShowLooseAnyway}
+                  className="rounded-none text-xs uppercase tracking-widest font-bold"
+                  data-testid="button-show-loose-matches"
+                >
+                  Show closest matches anyway ({searchResults?.length ?? 0})
+                </Button>
+              </div>
+            </div>
+          ) : isSearching || (isLoadingList && !hasSearched && !listData) ? (
             <div
               className="grid grid-cols-1 lg:grid-cols-2 gap-8"
               data-testid="search-skeletons"

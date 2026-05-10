@@ -1,0 +1,115 @@
+The current "NO EXACT MATCH — CLOSEST BY TOPIC" label is a passive warning that users glance past. People don't read; they scan. If you put 12 confession cards on the page, the brain
+  reads "these answer my question" before the brain reads the small-caps disclaimer above them.
+
+  The principle: if a user has to read a warning to interpret the result correctly, the result shouldn't be shown by default. Make it an active opt-in.
+
+  Here's the prompt to paste into Replit's agent. It builds on the retrieval_confidence work from the last prompt, so make sure that's shipped first:
+
+  ---
+
+  Goal: when retrieval_confidence is "low", do NOT render the 12 closest
+  matches by default. Show an empty-state message and require the user to
+  explicitly opt in to see loose matches. The current passive "NO EXACT MATCH
+  — CLOSEST BY TOPIC" label is too easy to miss; users see cards and assume
+  they answer the question.
+
+  Behavior by confidence level (search results page):
+
+    HIGH:
+      - Render results immediately (current behavior).
+
+    MEDIUM:
+      - Render results immediately.
+      - Show a small italic note above the first card:
+        "Loose match — the closest confessions, not direct answers."
+
+    LOW:
+      - DO NOT render result cards.
+      - Show this empty-state block in their place:
+
+          ┌───────────────────────────────────────────────┐
+          │  NO MATCH IN THE ARCHIVE                       │
+          │                                                │
+          │  "should I run the NYC marathon"               │
+          │                                                │
+          │  No confession in the archive directly         │
+          │  answers this. The PM Confessional covers      │
+          │  product, hiring, pricing, growth, culture,    │
+          │  fundraising, timing, and customer regrets     │
+          │  from PM podcast guests.                       │
+          │                                                │
+          │  Try one of:                                   │
+          │  • should I hire fast or slow                  │
+          │  • should I raise prices                       │
+          │  • should I sunset a feature                   │
+          │                                                │
+          │  Or:                                           │
+          │  [ SHOW CLOSEST MATCHES ANYWAY (12) ]          │
+          │                                                │
+          └───────────────────────────────────────────────┘
+
+        Match the existing typography (Newsreader serif headers, italic
+        MATCHES ANYWAY" button is secondary styling — outline, not filled —
+        and uses the existing button pattern from the rest of the site.
+
+      - The 3 example queries should be hardcoded for now. Pick three from
+        the categories that have the most confessions (Product, Culture,
+        Hiring) so the suggestions actually return strong results.
+
+      - When the user clicks SHOW CLOSEST MATCHES ANYWAY:
+        * Render the 12 result cards
+        * Above the first card, show: "12 LOOSE MATCHES — none directly
+          answer your question."
+        * Show the ASK THE ROOM panel below the cards (with the "low" coach
+          behavior from the previous prompt — coach refuses gracefully)
+
+      - Track this opt-in as a PostHog event:
+        `loose_results_shown` with properties { query, top1_cosine,
+        n_results_shown }
+        so we can measure how often users actually want to see loose matches.
+
+  Do not show ASK THE ROOM in the low-confidence empty state until the user
+  has chosen to see the results. Two competing CTAs on a "no match" page is
+  confusing.
+  
+  Verification:
+  1. Search "should I run the NYC marathon"
+     → see empty state, no result cards visible
+     → click SHOW CLOSEST MATCHES ANYWAY
+     → 12 cards render with the "12 LOOSE MATCHES" header
+     → ASK THE ROOM panel appears
+     
+  2. Search "should I hire a senior PM or two juniors"
+     → see results immediately (high confidence path)
+
+  3. Search "should I expand internationally" (likely medium)
+     → see results immediately with the italic "loose match" note
+   
+  4. Confirm the PostHog event fires only on the SHOW CLOSEST MATCHES
+     ANYWAY click, not on every low-confidence search.
+   
+  Don't change:
+    - The high/medium-confidence flows
+    - The retrieval pipeline
+    - The coach behavior (the previous prompt handles that)
+
+  ---
+  Why this matters more than the cosine threshold change
+  
+  The threshold change (0.65 → 0.70) was a quality fix. This is a trust fix. They're different problems:
+
+  - Quality: "the right answer is in there, but the system isn't surfacing it"
+  - Trust: "the system signals confidence even when it has none"
+
+  Trust failures cost more than quality failures because they're sticky. A user who gets a slightly off-topic top-1 once might shrug. A user who realizes the system was confidently giving them noise won't come
+  back.
+
+  This empty state is a trust artifact. It's the same move as your Methodology page's "0 flagged & hidden" — explicit honesty about limits, surfaced in the UI rather than buried.
+
+  The PostHog event is the underrated bit
+
+  Logging loose_results_shown lets you eventually answer:
+  - What % of low-confidence searches do users actually opt into seeing? If it's < 20%, the empty state is doing its job — users are accepting "no match" and moving on.
+  - Which queries trigger low-confidence most? That's your corpus expansion roadmap. The most-searched out-of-scope topics are the ones to add episodes about.
+
+  Both of those are senior-PM-grade observations you'll have data for in two weeks. Worth mentioning on the Methodology page once you have the numbers.
