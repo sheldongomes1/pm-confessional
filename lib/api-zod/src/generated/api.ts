@@ -340,6 +340,12 @@ export const StartCoachingSessionBody = zod.object({
     .describe(
       'Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When \"low\", the coach refuses to coach and explains the archive scope instead. Defaults to \"high\" for back-compat.',
     ),
+  top1_cosine: zod
+    .number()
+    .nullish()
+    .describe(
+      "Optional. Top-1 cosine similarity from the upstream search response, persisted on the session row so analytics events on the coach page (e.g. `coach_refused`) can correlate with the search-side `loose_results_shown` event without re-querying.",
+    ),
 });
 
 export const StartCoachingSessionResponse = zod.object({
@@ -352,6 +358,12 @@ export const StartCoachingSessionResponse = zod.object({
       .nullish()
       .describe(
         "Confidence captured at session start. Sessions created before this field existed return null.",
+      ),
+    top1_cosine: zod
+      .number()
+      .nullish()
+      .describe(
+        "Top-1 cosine similarity from the upstream search that produced this session. Null for sessions created before this field existed.",
       ),
     regrets: zod.array(
       zod.object({
@@ -416,6 +428,12 @@ export const GetCoachingSessionResponse = zod.object({
     .nullish()
     .describe(
       "Confidence captured at session start. Sessions created before this field existed return null.",
+    ),
+  top1_cosine: zod
+    .number()
+    .nullish()
+    .describe(
+      "Top-1 cosine similarity from the upstream search that produced this session. Null for sessions created before this field existed.",
     ),
   regrets: zod.array(
     zod.object({
@@ -483,6 +501,12 @@ export const ReplyCoachingSessionResponse = zod.object({
     .nullish()
     .describe(
       "Confidence captured at session start. Sessions created before this field existed return null.",
+    ),
+  top1_cosine: zod
+    .number()
+    .nullish()
+    .describe(
+      "Top-1 cosine similarity from the upstream search that produced this session. Null for sessions created before this field existed.",
     ),
   regrets: zod.array(
     zod.object({

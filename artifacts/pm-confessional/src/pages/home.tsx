@@ -74,7 +74,7 @@ function useElapsedMs(active: boolean): number {
 }
 
 export function Home() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
@@ -85,6 +85,20 @@ export function Home() {
   // Low-confidence searches require explicit opt-in to see the loose
   // matches. Reset on every new search so each query starts hidden.
   const [showLooseAnyway, setShowLooseAnyway] = useState(false);
+
+  // Read `?topic=hiring` from the URL on mount + on location change so
+  // deep links from the coach refusal footer (BACK TO ARCHIVE → topic
+  // chips) and external links land on a pre-filtered archive view. Only
+  // applies when the topic key matches the canonical TOPIC_TILES enum.
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("topic");
+    if (t && TOPIC_TILES.some((tile) => tile.key === t)) {
+      setSelectedTopic(t);
+    }
+    // location is a wouter dependency so the effect re-runs on
+    // client-side navigation (e.g. from coach → home via topic chip).
+  }, [location]);
 
   const searchMutation = useSearchRegrets();
   const startCoachMutation = useStartCoachingSession();
@@ -131,15 +145,24 @@ export function Home() {
       .map((r) => r.id);
     const decision = searchMutation.data?.query?.trim();
     const confidence = searchMutation.data?.retrieval_confidence ?? "high";
+    const top1Cosine = searchMutation.data?.top1_cosine ?? null;
     if (!decision || ids.length === 0 || startCoachMutation.isPending) return;
     track("coach_started", {
       decision_length: decision.length,
       regret_count: ids.length,
       retrieval_confidence: confidence,
+      top1_cosine: top1Cosine,
     });
     startCoachMutation.mutate(
       {
-        data: { decision, regret_ids: ids, retrieval_confidence: confidence },
+        data: {
+          decision,
+          regret_ids: ids,
+          retrieval_confidence: confidence,
+          // Persisted on the session row so the coach page can include
+          // it in the `coach_refused` event without re-querying search.
+          top1_cosine: top1Cosine,
+        },
       },
       {
         onSuccess: (resp) => {

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, jsonb, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -17,6 +17,11 @@ export const coachingSessionsTable = pgTable("coaching_sessions", {
   // (e.g. "should I run the NYC marathon" → no relevant confessions).
   retrieval_confidence: text("retrieval_confidence")
     .$type<"high" | "medium" | "low">(),
+  // Top-1 cosine similarity from the upstream search that produced
+  // this session. Persisted so PostHog `coach_refused` events can pair
+  // with `loose_results_shown` and we can correlate refusal rate to
+  // similarity bands offline.
+  top1_cosine: real("top1_cosine"),
   messages: jsonb("messages")
     .$type<Array<{ role: "user" | "model"; content: string }>>()
     .notNull()

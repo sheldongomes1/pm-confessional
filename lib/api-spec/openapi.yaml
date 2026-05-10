@@ -586,6 +586,10 @@ components:
           type: string
           enum: [high, medium, low]
           description: Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When "low", the coach refuses to coach and explains the archive scope instead. Defaults to "high" for back-compat.
+        top1_cosine:
+          type: number
+          nullable: true
+          description: Optional. Top-1 cosine similarity from the upstream search response, persisted on the session row so analytics events on the coach page (e.g. `coach_refused`) can correlate with the search-side `loose_results_shown` event without re-querying.
       required:
         - decision
         - regret_ids
@@ -618,6 +622,10 @@ components:
           enum: [high, medium, low]
           nullable: true
           description: Confidence captured at session start. Sessions created before this field existed return null.
+        top1_cosine:
+          type: number
+          nullable: true
+          description: Top-1 cosine similarity from the upstream search that produced this session. Null for sessions created before this field existed.
         regrets:
           type: array
           items:

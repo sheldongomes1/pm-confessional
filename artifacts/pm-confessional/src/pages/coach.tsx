@@ -196,6 +196,8 @@ export function Coach() {
   const [input, setInput] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
+  const isLowConfidence = data?.retrieval_confidence === "low";
+
   useEffect(() => {
     if (data) {
       track("coach_session_viewed", {
@@ -204,6 +206,20 @@ export function Coach() {
       });
     }
   }, [data?.id]);
+
+  // Fire `coach_refused` exactly once per low-confidence session view —
+  // pairs with `loose_results_shown` from the search gate to measure the
+  // full miss funnel (low search → loose opt-in → coach refusal).
+  useEffect(() => {
+    if (data && isLowConfidence) {
+      track("coach_refused", {
+        session_id: data.id,
+        query: data.user_decision,
+        top1_cosine: data.top1_cosine ?? null,
+        n_loose_matches: data.regrets.length,
+      });
+    }
+  }, [data?.id, isLowConfidence]);
 
   // Scroll to the bottom of the thread on new messages.
   useEffect(() => {
@@ -298,9 +314,18 @@ export function Coach() {
           <h1 className="font-serif text-3xl md:text-4xl text-foreground leading-tight">
             "{data.user_decision}"
           </h1>
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mt-3 font-bold">
-            Grounded on {data.regrets.length} confessions · powered by Gemini
-          </p>
+          {isLowConfidence ? (
+            <p
+              className="text-xs uppercase tracking-widest text-destructive mt-3 font-bold"
+              data-testid="coach-status-out-of-scope"
+            >
+              Out of scope — coach cannot ground advice
+            </p>
+          ) : (
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mt-3 font-bold">
+              Grounded on {data.regrets.length} confessions · powered by Gemini
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-10">
@@ -343,6 +368,51 @@ export function Coach() {
               )}
             </div>
 
+            {isLowConfidence ? (
+              // Low-confidence refusal footer: hide the textarea entirely
+              // (a disabled textarea still implies "this is the next
+              // step" — we want the user redirected, not blocked). The
+              // chips link into the existing /?topic= filter, which Home
+              // reads on mount.
+              <div
+                className="border-t border-border pt-8 mt-4"
+                data-testid="coach-refusal-footer"
+              >
+                <p className="text-xs uppercase tracking-[0.3em] font-bold text-foreground mb-6">
+                  Ask a question the archive covers
+                </p>
+                <div className="mb-8">
+                  <Link
+                    href="/"
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-foreground text-xs uppercase tracking-widest font-bold text-foreground hover:bg-foreground hover:text-background transition-colors"
+                    data-testid="coach-back-to-search"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Back to search
+                  </Link>
+                </div>
+                <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3">
+                  Or browse a topic that's well-covered:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: "hiring", label: "Hiring" },
+                    { key: "pricing", label: "Pricing" },
+                    { key: "product", label: "Product" },
+                    { key: "culture", label: "Culture" },
+                  ].map((t) => (
+                    <Link
+                      key={t.key}
+                      href={`/?topic=${t.key}`}
+                      className="px-3 py-1.5 border border-border text-[11px] uppercase tracking-widest font-bold text-foreground hover:border-primary hover:text-primary transition-colors"
+                      data-testid={`coach-topic-chip-${t.key}`}
+                    >
+                      {t.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
             <form
               onSubmit={handleSubmit}
               className="border-t border-border pt-6 sticky bottom-0 bg-background"
@@ -385,12 +455,16 @@ export function Coach() {
                 </p>
               )}
             </form>
+            )}
           </div>
 
-          {/* Source confessions */}
-          <aside>
+          {/* Source confessions — relabeled + muted for low-confidence
+              so users don't read the loose matches as answers. */}
+          <aside className={isLowConfidence ? "opacity-60" : undefined}>
             <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground mb-4">
-              Source confessions
+              {isLowConfidence
+                ? "Loosely related — not answers"
+                : "Source confessions"}
             </p>
             <div className="space-y-3">
               {data.regrets.map((r) => (

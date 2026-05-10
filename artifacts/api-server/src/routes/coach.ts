@@ -56,6 +56,46 @@ FOLLOW-UP TURN format (high/medium):
 - Synthesize lessons across the cited confessions; surface tensions when guests disagree.
 - End with one concrete next-step the user could take this week.`;
 
+/**
+ * Deterministic refusal text used when retrieval_confidence === "low".
+ * We do NOT call Gemini in this case because:
+ *   1. Latency: refusal is instant (no 1-2s model roundtrip).
+ *   2. Cost: no tokens spent on a no-op response.
+ *   3. Reliability: a hardcoded template can't accidentally hallucinate
+ *      domain-specific advice (e.g. marathon training tips) into the
+ *      refusal. The template IS the safety mechanism.
+ *
+ * Mirrors the prose template the model would have produced in the low
+ * branch of COACH_SYSTEM_PROMPT, but rendered server-side from the
+ * actual retrieved regrets so ids/topics are guaranteed accurate.
+ */
+function buildLowConfidenceRefusal(
+  decision: string,
+  regrets: (typeof regretsTable.$inferSelect)[],
+): string {
+  const truncate = (s: string, n: number): string =>
+    s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
+  // Plain `#id` (NOT `[#id]`) per spec. The bracketed form would make
+  // these clickable citations via CoachMessageBody, but spec calls for
+  // the literal prose template — and the sidebar already provides a
+  // clickable surface for users who want to read the loose matches.
+  const lines = regrets
+    .slice(0, 5)
+    .map(
+      (r) =>
+        `  - #${r.id} (${r.topic_tag}): ${truncate(r.regret_statement, 60)}`,
+    )
+    .join("\n");
+  return `The PM Confessional archives regrets shared by product leaders on Lenny's Podcast. The decisions covered are hiring, pricing, product, growth, culture, fundraising, timing, and customer relationships.
+
+The closest matches found for "${decision}" were:
+${lines}
+
+None of these directly address your question. I won't try to coach you on a decision this archive can't ground.
+
+If you have a product, hiring, pricing, or strategy question you're weighing, ask that — the archive can help there.`;
+}
+
 function buildConfessionsBlock(
   regrets: (typeof regretsTable.$inferSelect)[],
 ): string {
@@ -139,6 +179,7 @@ async function loadSessionWithRegrets(id: number) {
     user_decision: session.user_decision,
     regret_ids: ids,
     retrieval_confidence: session.retrieval_confidence ?? null,
+    top1_cosine: session.top1_cosine ?? null,
     regrets: regrets.map((r) => ({
       ...r,
       created_at:
@@ -163,8 +204,13 @@ router.post("/coach/start", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { decision, regret_ids, retrieval_confidence } = parsed.data;
+  const { decision, regret_ids, retrieval_confidence, top1_cosine } =
+    parsed.data;
   const clientConfidence = retrieval_confidence ?? "high";
+  const clientTop1Cosine =
+    typeof top1_cosine === "number" && Number.isFinite(top1_cosine)
+      ? top1_cosine
+      : null;
   const trimmedDecision = decision.trim().slice(0, 1000);
   if (trimmedDecision.length < 4) {
     res.status(400).json({ error: "Decision text is too short." });
@@ -231,19 +277,32 @@ router.post("/coach/start", async (req, res): Promise<void> => {
     req.log.warn({ err }, "coach.confidence.verify_failed");
   }
 
-  const confessionsBlock = buildConfessionsBlock(regrets);
+  // Low-confidence shortcut: skip Gemini entirely and emit a
+  // deterministic refusal. See buildLowConfidenceRefusal() for the
+  // architectural reasoning (faster, cheaper, can't hallucinate).
   let opening: string;
-  try {
-    opening = await generateCoachReply(
-      trimmedDecision,
-      confessionsBlock,
-      [],
-      confidence,
+  if (confidence === "low") {
+    opening = buildLowConfidenceRefusal(trimmedDecision, regrets);
+    req.log.info(
+      { confidence, regret_ids: regrets.map((r) => r.id) },
+      "coach.refusal.deterministic",
     );
-  } catch (err) {
-    req.log.error({ err }, "Coach opening generation failed");
-    res.status(502).json({ error: "Coach is temporarily unavailable. Please try again." });
-    return;
+  } else {
+    const confessionsBlock = buildConfessionsBlock(regrets);
+    try {
+      opening = await generateCoachReply(
+        trimmedDecision,
+        confessionsBlock,
+        [],
+        confidence,
+      );
+    } catch (err) {
+      req.log.error({ err }, "Coach opening generation failed");
+      res.status(502).json({
+        error: "Coach is temporarily unavailable. Please try again.",
+      });
+      return;
+    }
   }
 
   const messages: ChatMessage[] = [{ role: "model", content: opening }];
@@ -254,6 +313,7 @@ router.post("/coach/start", async (req, res): Promise<void> => {
       user_decision: trimmedDecision,
       regret_ids: regrets.map((r) => r.id),
       retrieval_confidence: confidence,
+      top1_cosine: clientTop1Cosine,
       messages,
     })
     .returning({ id: coachingSessionsTable.id });

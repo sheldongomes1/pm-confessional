@@ -221,6 +221,8 @@ export interface StartCoachingSessionBody {
   regret_ids: number[];
   /** Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When "low", the coach refuses to coach and explains the archive scope instead. Defaults to "high" for back-compat. */
   retrieval_confidence?: StartCoachingSessionBodyRetrievalConfidence;
+  /** Optional. Top-1 cosine similarity from the upstream search response, persisted on the session row so analytics events on the coach page (e.g. `coach_refused`) can correlate with the search-side `loose_results_shown` event without re-querying. */
+  top1_cosine?: number | null;
 }
 
 export type CoachMessageRole =
@@ -255,6 +257,8 @@ export interface CoachingSession {
   regret_ids: number[];
   /** Confidence captured at session start. Sessions created before this field existed return null. */
   retrieval_confidence?: CoachingSessionRetrievalConfidence;
+  /** Top-1 cosine similarity from the upstream search that produced this session. Null for sessions created before this field existed. */
+  top1_cosine?: number | null;
   regrets: Regret[];
   messages: CoachMessage[];
   created_at: string;
