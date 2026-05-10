@@ -96,6 +96,18 @@ export const SearchRegretsResponseRerankModel = {
   flash: "flash",
 } as const;
 
+/**
+ * Composite confidence signal combining top-1 cosine and top-1 rerank score. Downstream consumers (e.g. Decision Coach) use this to gate or hedge advice. "low" means the question is likely out-of-scope for the archive.
+ */
+export type SearchRegretsResponseRetrievalConfidence =
+  (typeof SearchRegretsResponseRetrievalConfidence)[keyof typeof SearchRegretsResponseRetrievalConfidence];
+
+export const SearchRegretsResponseRetrievalConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
 export interface SearchRegretsResponse {
   regrets: Regret[];
   query: string;
@@ -111,6 +123,10 @@ export interface SearchRegretsResponse {
   top1_cosine?: number;
   /** True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak */
   low_confidence?: boolean;
+  /** Composite confidence signal combining top-1 cosine and top-1 rerank score. Downstream consumers (e.g. Decision Coach) use this to gate or hedge advice. "low" means the question is likely out-of-scope for the archive. */
+  retrieval_confidence?: SearchRegretsResponseRetrievalConfidence;
+  /** Top-1 rerank score (0-10) when a rerank ran, null otherwise. Used together with top1_cosine to derive retrieval_confidence. */
+  top1_rerank_score?: number | null;
 }
 
 export interface CategoryCount {
@@ -186,11 +202,25 @@ export interface IngestStatus {
   completed_at?: string | null;
 }
 
+/**
+ * Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When "low", the coach refuses to coach and explains the archive scope instead. Defaults to "high" for back-compat.
+ */
+export type StartCoachingSessionBodyRetrievalConfidence =
+  (typeof StartCoachingSessionBodyRetrievalConfidence)[keyof typeof StartCoachingSessionBodyRetrievalConfidence];
+
+export const StartCoachingSessionBodyRetrievalConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
 export interface StartCoachingSessionBody {
   /** The user's decision or situation (free text, max ~500 chars) */
   decision: string;
   /** IDs of the regrets returned by /regrets/search to ground the coach on */
   regret_ids: number[];
+  /** Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When "low", the coach refuses to coach and explains the archive scope instead. Defaults to "high" for back-compat. */
+  retrieval_confidence?: StartCoachingSessionBodyRetrievalConfidence;
 }
 
 export type CoachMessageRole =
@@ -206,10 +236,25 @@ export interface CoachMessage {
   content: string;
 }
 
+/**
+ * Confidence captured at session start. Sessions created before this field existed return null.
+ */
+export type CoachingSessionRetrievalConfidence =
+  | (typeof CoachingSessionRetrievalConfidence)[keyof typeof CoachingSessionRetrievalConfidence]
+  | null;
+
+export const CoachingSessionRetrievalConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
 export interface CoachingSession {
   id: number;
   user_decision: string;
   regret_ids: number[];
+  /** Confidence captured at session start. Sessions created before this field existed return null. */
+  retrieval_confidence?: CoachingSessionRetrievalConfidence;
   regrets: Regret[];
   messages: CoachMessage[];
   created_at: string;

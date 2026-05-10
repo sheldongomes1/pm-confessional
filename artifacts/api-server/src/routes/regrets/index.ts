@@ -20,6 +20,34 @@ const HIGH_CONFIDENCE_THRESHOLD = Number(
 const LOW_CONFIDENCE_THRESHOLD = Number(
   process.env.LOW_CONFIDENCE_THRESHOLD ?? "0.45",
 );
+
+/**
+ * Composite confidence signal exposed to downstream consumers (Decision
+ * Coach, UI gating). Uses BOTH cosine and rerank score so out-of-scope
+ * questions like "should I run the NYC marathon" — which sneak past
+ * cosine alone — get caught by the rerank's 0-10 grade.
+ *
+ *   high   → top1_cosine >= 0.70 AND (no rerank OR rerank >= 7)
+ *   low    → top1_cosine < 0.55 OR (rerank ran AND rerank < 5)
+ *   medium → everything else (rerank fired, signal is mixed)
+ *
+ * Conservative: any "low" signal wins. The downstream coach prompt
+ * refuses to advise when this returns "low".
+ */
+function computeRetrievalConfidence(
+  topCosine: number,
+  topRerankScore: number | null,
+): "high" | "medium" | "low" {
+  if (topCosine < 0.55) return "low";
+  if (topRerankScore !== null && topRerankScore < 5) return "low";
+  if (
+    topCosine >= 0.7 &&
+    (topRerankScore === null || topRerankScore >= 7)
+  ) {
+    return "high";
+  }
+  return "medium";
+}
 import {
   ListRegretsQueryParams,
   SearchRegretsBody,
@@ -320,6 +348,8 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
         rerank_model: "none",
         top1_cosine: top1Rounded,
         low_confidence: false,
+        retrieval_confidence: computeRetrievalConfidence(topCosine, null),
+        top1_rerank_score: null,
       }),
     );
     return;
@@ -361,6 +391,9 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
         rerank_model: rerankModelName,
         top1_cosine: top1Rounded,
         low_confidence: isLowConfidence,
+        // Rerank failed: confidence falls back to cosine-only signal.
+        retrieval_confidence: computeRetrievalConfidence(topCosine, null),
+        top1_rerank_score: null,
       }),
     );
     return;
@@ -378,6 +411,10 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
   const realMatches = scored.filter((s) => s.score >= 4);
   const finalList = realMatches.length > 0 ? realMatches.slice(0, k) : scored.slice(0, k);
 
+  // Top-1 rerank score from the *post-sort* lineup (i.e. the highest score
+  // any candidate received, not the cosine-top-1's rerank score).
+  const topRerankScore = scored[0]?.score ?? null;
+
   writeTimingHeader();
   req.log.info({ timings, query }, "search.timing");
   res.json(
@@ -390,6 +427,14 @@ router.post("/regrets/search", async (req, res): Promise<void> => {
       rerank_model: rerankModelName,
       top1_cosine: top1Rounded,
       low_confidence: isLowConfidence,
+      retrieval_confidence: computeRetrievalConfidence(
+        topCosine,
+        topRerankScore,
+      ),
+      top1_rerank_score:
+        topRerankScore !== null
+          ? Math.round(topRerankScore * 10) / 10
+          : null,
     }),
   );
 });

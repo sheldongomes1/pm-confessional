@@ -145,6 +145,18 @@ export const SearchRegretsResponse = zod.object({
     .describe(
       "True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak",
     ),
+  retrieval_confidence: zod
+    .enum(["high", "medium", "low"])
+    .optional()
+    .describe(
+      'Composite confidence signal combining top-1 cosine and top-1 rerank score. Downstream consumers (e.g. Decision Coach) use this to gate or hedge advice. \"low\" means the question is likely out-of-scope for the archive.',
+    ),
+  top1_rerank_score: zod
+    .number()
+    .nullish()
+    .describe(
+      "Top-1 rerank score (0-10) when a rerank ran, null otherwise. Used together with top1_cosine to derive retrieval_confidence.",
+    ),
 });
 
 /**
@@ -322,6 +334,12 @@ export const StartCoachingSessionBody = zod.object({
     .describe(
       "IDs of the regrets returned by \/regrets\/search to ground the coach on",
     ),
+  retrieval_confidence: zod
+    .enum(["high", "medium", "low"])
+    .optional()
+    .describe(
+      'Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When \"low\", the coach refuses to coach and explains the archive scope instead. Defaults to \"high\" for back-compat.',
+    ),
 });
 
 export const StartCoachingSessionResponse = zod.object({
@@ -329,6 +347,12 @@ export const StartCoachingSessionResponse = zod.object({
     id: zod.number(),
     user_decision: zod.string(),
     regret_ids: zod.array(zod.number()),
+    retrieval_confidence: zod
+      .enum(["high", "medium", "low"])
+      .nullish()
+      .describe(
+        "Confidence captured at session start. Sessions created before this field existed return null.",
+      ),
     regrets: zod.array(
       zod.object({
         id: zod.number(),
@@ -387,6 +411,12 @@ export const GetCoachingSessionResponse = zod.object({
   id: zod.number(),
   user_decision: zod.string(),
   regret_ids: zod.array(zod.number()),
+  retrieval_confidence: zod
+    .enum(["high", "medium", "low"])
+    .nullish()
+    .describe(
+      "Confidence captured at session start. Sessions created before this field existed return null.",
+    ),
   regrets: zod.array(
     zod.object({
       id: zod.number(),
@@ -448,6 +478,12 @@ export const ReplyCoachingSessionResponse = zod.object({
   id: zod.number(),
   user_decision: zod.string(),
   regret_ids: zod.array(zod.number()),
+  retrieval_confidence: zod
+    .enum(["high", "medium", "low"])
+    .nullish()
+    .describe(
+      "Confidence captured at session start. Sessions created before this field existed return null.",
+    ),
   regrets: zod.array(
     zod.object({
       id: zod.number(),

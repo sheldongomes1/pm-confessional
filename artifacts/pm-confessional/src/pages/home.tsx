@@ -127,13 +127,17 @@ export function Home() {
       .slice(0, 5)
       .map((r) => r.id);
     const decision = searchMutation.data?.query?.trim();
+    const confidence = searchMutation.data?.retrieval_confidence ?? "high";
     if (!decision || ids.length === 0 || startCoachMutation.isPending) return;
     track("coach_started", {
       decision_length: decision.length,
       regret_count: ids.length,
+      retrieval_confidence: confidence,
     });
     startCoachMutation.mutate(
-      { data: { decision, regret_ids: ids } },
+      {
+        data: { decision, regret_ids: ids, retrieval_confidence: confidence },
+      },
       {
         onSuccess: (resp) => {
           navigate(`/coach/${resp.session.id}`);
@@ -612,37 +616,55 @@ export function Home() {
       {/* Results / Featured Section */}
       <section id="results-section" className="py-20 px-6 flex-1 bg-background">
         <div className="container mx-auto max-w-7xl">
-          {/* Ask the room CTA — only after a successful search with results */}
-          {hasSearched && (searchResults?.length ?? 0) > 0 && (
-            <div className="mb-10 border border-primary/40 bg-primary/5 p-6 md:p-8 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
-              <div className="flex-1">
-                <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary mb-2 inline-flex items-center gap-2">
-                  <Sparkles className="w-3 h-3" /> New
-                </p>
-                <p className="font-serif text-xl md:text-2xl text-foreground leading-snug">
-                  Ask the room about this decision.
-                </p>
-                <p className="text-sm text-muted-foreground italic font-serif mt-1">
-                  A Gemini-grounded coach reads the top {Math.min(5, searchResults?.length ?? 0)} confessions and helps you think it through. Citations only — no invented advice.
-                </p>
+          {/* Ask the room CTA — only after a successful search with results.
+              Copy + button label adapt to retrieval_confidence so we don't
+              promise grounded coaching on out-of-scope queries. */}
+          {hasSearched && (searchResults?.length ?? 0) > 0 && (() => {
+            const confidence =
+              searchMutation.data?.retrieval_confidence ?? "high";
+            const buttonLabel =
+              confidence === "low" ? "Ask anyway" : "Ask the room";
+            const subcopy =
+              confidence === "low"
+                ? "The archive doesn't have a strong match for this question. The coach will explain the scope instead of advising."
+                : confidence === "medium"
+                  ? "Match is loose — the coach will flag if it can't ground advice."
+                  : `A Gemini-grounded coach reads the top ${Math.min(5, searchResults?.length ?? 0)} confessions and helps you think it through. Citations only — no invented advice.`;
+            const headlineCopy =
+              confidence === "low"
+                ? "No strong match — see why."
+                : "Ask the room about this decision.";
+            return (
+              <div className="mb-10 border border-primary/40 bg-primary/5 p-6 md:p-8 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+                <div className="flex-1">
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary mb-2 inline-flex items-center gap-2">
+                    <Sparkles className="w-3 h-3" /> New
+                  </p>
+                  <p className="font-serif text-xl md:text-2xl text-foreground leading-snug">
+                    {headlineCopy}
+                  </p>
+                  <p className="text-sm text-muted-foreground italic font-serif mt-1">
+                    {subcopy}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleStartCoach}
+                  disabled={startCoachMutation.isPending}
+                  className="rounded-none text-xs uppercase tracking-widest font-bold whitespace-nowrap"
+                  data-testid="button-ask-the-room"
+                >
+                  {startCoachMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      {buttonLabel}
+                    </>
+                  )}
+                </Button>
               </div>
-              <Button
-                onClick={handleStartCoach}
-                disabled={startCoachMutation.isPending}
-                className="rounded-none text-xs uppercase tracking-widest font-bold whitespace-nowrap"
-                data-testid="button-ask-the-room"
-              >
-                {startCoachMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Ask the room
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
+            );
+          })()}
           {hasSearched ? (
             <div className="mb-12 flex items-end justify-between border-b border-border pb-4 gap-6 flex-wrap">
               <div>

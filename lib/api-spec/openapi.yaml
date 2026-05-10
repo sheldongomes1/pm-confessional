@@ -402,6 +402,14 @@ components:
         low_confidence:
           type: boolean
           description: True when the top-1 cosine fell below LOW_CONFIDENCE_THRESHOLD; the response was rescued by full Flash rerank but quality may still be weak
+        retrieval_confidence:
+          type: string
+          enum: [high, medium, low]
+          description: Composite confidence signal combining top-1 cosine and top-1 rerank score. Downstream consumers (e.g. Decision Coach) use this to gate or hedge advice. "low" means the question is likely out-of-scope for the archive.
+        top1_rerank_score:
+          type: number
+          nullable: true
+          description: Top-1 rerank score (0-10) when a rerank ran, null otherwise. Used together with top1_cosine to derive retrieval_confidence.
       required:
         - regrets
         - query
@@ -574,6 +582,10 @@ components:
           items:
             type: integer
           description: IDs of the regrets returned by /regrets/search to ground the coach on
+        retrieval_confidence:
+          type: string
+          enum: [high, medium, low]
+          description: Optional. Mirrors the field of the same name on the upstream SearchRegretsResponse. When "low", the coach refuses to coach and explains the archive scope instead. Defaults to "high" for back-compat.
       required:
         - decision
         - regret_ids
@@ -601,6 +613,11 @@ components:
           type: array
           items:
             type: integer
+        retrieval_confidence:
+          type: string
+          enum: [high, medium, low]
+          nullable: true
+          description: Confidence captured at session start. Sessions created before this field existed return null.
         regrets:
           type: array
           items:

@@ -1,0 +1,132 @@
+The failure trace
+
+  Step: Search
+  What the system did: Top-1 cosine 0.60. UI labeled it "NO EXACT MATCH — CLOSEST BY TOPIC, 12 CLOSEST" ✅    
+  What it should have done: Same
+  ────────────────────────────────────────
+  Step: Ask the Room button
+  What the system did: Stayed enabled, no gating
+  What it should have done: Should warn or refuse
+  ────────────────────────────────────────
+  Step: Coach response
+  What the system did: "You're asking whether you should run the NYC marathon. This is a personal decision, but we can look at some of the regrets shared here..." + 2 PM-style clarifying questions
+  What it should have done: Should refuse: "This archive doesn't cover marathon decisions. Try…"
+  ────────────────────────────────────────
+  Step: Source confessions
+  What the system did: Andy Johns on imposter syndrome, Eoghan McCabe on burnout, Paul Adams on stage fright, Sam Schillace on career philosophy
+  What it should have done: None relate to marathons. The retrieval is noise.
+
+  The coach has a thin disclaimer ("this is a personal decision") then proceeds anyway. Worse, the agent's clarifying questions ("What's driving your interest in running the marathon?") imply the archive has 
+  marathon-running data. It doesn't. That's the credibility hit you noticed.
+
+  Where it broke, structurally
+
+  Two missing guardrails:
+
+  1. The search-side low_confidence flag is computed but unused downstream. The UI knows to say "NO EXACT MATCH" but the Ask-the-Room flow ignores it.
+  2. The coach's system prompt has no scope check. It assumes any question that arrives at it is a product/business decision worth coaching.
+
+  The fix is server-side and cheap. Here's the prompt:
+
+  ---
+
+  Goal: stop the Decision Coach from improvising advice when the retrieval
+  is low-confidence or the question is out-of-scope. We just hit a real
+  failure: a user asked "should I run the NYC marathon" and the coach pulled
+  5 unrelated confessions (burnout, imposter syndrome, stage fright) and
+  proceeded with a normal PM-coaching script, even asking clarifying questions
+  about marathon training. That destroys trust in the entire product.
+
+  Step 1 — Compute a confidence signal at retrieval time, not at coach time.
+  On the search response, add a server-computed field:
+
+    retrieval_confidence: "high" | "medium" | "low"
+
+    high   → top1_cosine >= 0.70 AND (no rerank ran OR top1_rerank_score >= 7)
+    medium → 0.55 <= top1_cosine < 0.70 OR top1_rerank_score in [5, 7)
+    low    → top1_cosine < 0.55 OR top1_rerank_score < 5
+
+  The "should I run the NYC marathon" query (cosine 0.60, presumably low rerank
+  scores across the board) should bucket as "low".
+
+  Pass retrieval_confidence into the coach session payload alongside the
+  5 source confessions.
+
+  Step 2 — Gate the Ask the Room button on retrieval_confidence.
+  On the search results page:
+
+    high   → button reads "ASK THE ROOM" (current behavior)
+    medium → button reads "ASK THE ROOM" with a small italic note below:
+             "Match is loose — coach will flag if it can't ground advice."
+    low    → button is still clickable, but reads "ASK ANYWAY" and shows
+             a small italic note: "The archive doesn't have a strong match
+             for this question. Coach will explain instead of advising."
+
+  Don't disable the button entirely. Users may still want to see the coach's
+  explanation of why their question isn't covered.
+
+  Step 3 — Update the coach system prompt to branch on retrieval_confidence.
+  The coach already gets the 5 source confessions. Now also pass it the
+  retrieval_confidence string. Add this branch to the coach's system prompt
+  (or as a pre-prompt):
+
+    If retrieval_confidence is "low":
+  (or as a pre-prompt):
+
+    If retrieval_confidence is "low":
+      - Do NOT proceed with normal coaching.
+      - Do NOT ask clarifying questions about the user's domain.
+      - Respond with this structure:
+          1. Acknowledge the question briefly.
+          2. State that The PM Confessional is an archive of product, hiring,
+             related regrets from product leaders interviewed on Lenny's
+             Podcast — and that the closest matches found do not directly
+             address this question.
+          3. Show the user the topic_tag of each of the 5 confessions
+             retrieved, so they see why the search was loose.
+          4. Suggest 1-2 reframings IF the question is adjacent to a covered
+             topic (e.g., "running a marathon" might be reframable as
+             "should I take on a stretch project that costs me time?" if
+             the user wants to explore that angle).
+          5. End with: "If you have a product, hiring, or strategy decision
+             you're weighing, ask that — the archive can help there."
+      - Do NOT cite the confessions as if they answer the question. Cite
+        them only by topic_tag, e.g., "Confession #520 (topic: 'other') is
+        about feeling worthy through ultra-running, not about whether to run
+        one."
+
+    If retrieval_confidence is "medium":
+      - Proceed with coaching, but open with a hedge: "These confessions are
+        loosely related to your question. Here's what they suggest, with
+      - Do NOT cite the confessions as if they answer the question. Cite
+        them only by topic_tag, e.g., "Confession #520 (topic: 'other') is
+        about feeling worthy through ultra-running, not about whether to run
+        one."
+      
+    If retrieval_confidence is "medium":
+      - Proceed with coaching, but open with a hedge: "These confessions are
+        loosely related to your question. Here's what they suggest, with
+        that caveat:"
+      - Otherwise normal behavior.
+
+    If retrieval_confidence is "high":
+      - Current behavior, no change. 
+
+  Step 4 — Verification.
+  Run the coach on these 5 queries and report the response's first paragraph
+  plus retrieval_confidence:
+  
+    1. "should I run the NYC marathon" (expect: low, refusal)
+    2. "what should I name my dog" (expect: low, refusal)
+    3. "should I hire a senior PM or two juniors" (expect: high, normal coaching)
+    4. "should I raise prices or stay low to grow" (expect: high, normal coaching)
+    5. "should I expand internationally too soon" (expect: medium, hedged coaching)
+    
+  If any of #1, #2 still produces normal coaching script, the prompt branch
+  isn't firing. Show me the raw payload sent to the coach for #1 so I can see
+  what retrieval_confidence value it received.
+  
+  Do NOT change:
+    - The retrieval pipeline (it's fine; we just need to surface its signal)
+    - The coach prompt for high-confidence cases
+    - The HIGH_CONFIDENCE_THRESHOLD that controls rerank firing
