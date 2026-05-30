@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+**/dist
+.local
+.cache
+*.sql
+*.sql.gz
+.env
+.env.*
+deploy/local-credentials.txt
