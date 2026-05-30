@@ -9,6 +9,9 @@
 #
 # glibc (bookworm), NOT alpine: pnpm-workspace.yaml excludes rollup's musl
 # native binary but keeps linux-x64-gnu, so the Vite build needs glibc.
+#
+# NOTE: no Dockerfile heredocs — Cloud Build's default docker builder doesn't
+# enable BuildKit, so the runtime package.json is a committed file we COPY.
 
 # ---------------------------------------------------------------------------
 # Stage 1 — builder: install the whole pnpm workspace, build FE + API.
@@ -53,18 +56,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # @google/genai is externalized by the esbuild config (@google/*), so the
-# bundle imports it as a bare specifier at runtime. Install it cleanly here.
-# Keep the version in sync with artifacts/api-server/package.json.
-COPY <<'EOF' /app/package.json
-{
-  "name": "pm-confessional-runtime",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@google/genai": "^1.40.0"
-  }
-}
-EOF
+# bundle imports it as a bare specifier at runtime. Install it standalone from a
+# committed package.json (no heredoc — keeps Cloud Build's non-BuildKit docker
+# builder happy). Keep the version in sync with artifacts/api-server/package.json.
+COPY deploy/runtime-package.json ./package.json
 RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Server bundle (index.mjs + pino transport files) and the built SPA.

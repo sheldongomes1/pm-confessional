@@ -1,0 +1,8 @@
+{
+  "name": "pm-confessional-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^1.40.0"
+  }
+}
