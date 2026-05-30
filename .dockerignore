@@ -1,0 +1,29 @@
+# Keep the build context small and reproducible.
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+
+# Never ship secrets or prod data into the image / context
+.env
+.env.*
+!.env.example
+*.sql
+*.sql.gz
+
+# VCS / editor / Replit cruft
+.git
+.gitignore
+.idea
+.vscode
+.cache
+.local
+.replit
+.replitignore
+
+# Local docs & one-off artifacts not needed at build time.
+# (attached_assets is intentionally NOT ignored: vite.config aliases @assets
+# to it, so excluding it could break the frontend build.)
+audit-report.json
+deploy/DEPLOY.md

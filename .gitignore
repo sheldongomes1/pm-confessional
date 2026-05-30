@@ -47,3 +47,12 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Secrets and local config (GCP migration)
+.env
+.env.*
+!.env.example
+
+# Database dumps — never commit prod data
+*.sql
+*.sql.gz
